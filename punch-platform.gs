@@ -122,7 +122,7 @@ const DEFAULT_RULES = [
   [2, '工作時間',   '正常工時每日不超過8小時、每週不超過40小時(勞基法§30)。\n連續工作4小時應至少休息30分鐘(§35)。\n每7日應有2日休息,1日為例假、1日為休息日(§36)。', 'TRUE'],
   [3, '加班規定',   '加班須事先取得主管同意。\n延長工時連同正常工時每日不得超過12小時,每月延長工時不得超過46小時;經工會或勞資會議同意得延長至54小時,每3個月不得超過138小時(§32)。\n加班費:平日前2小時1⅓倍、第3小時起1⅔倍;休息日前2小時1⅓倍、第3小時起1⅔倍(§24)。', 'TRUE'],
   [4, '請假規定',   '事假、特休、婚假等可預期的假別,請於開始日3個工作天前提出申請並取得核准。\n病假、喪假、公傷病假等突發狀況,請於當日儘速通知主管並事後補件。\n各假別的天數上限與給薪比例,請見請假頁面的說明。', 'TRUE'],
-  [5, '請假流程',   '1. 在聊天室點「🗓 請假」開啟申請表\n2. 選擇假別、起訖日期與時段,填寫事由\n3. 送出後由主管審核\n4. 核准或駁回會用訊息通知你', 'TRUE'],
+  [5, '請假流程',   '1. 在聊天室點「🗓 請假」開啟申請表\n2. 選擇假別、起訖日期與時段,填寫事由\n3. 送出後由主管審核\n4. 核准或駁回會用訊息通知你\n\n請假不限地點,在家或就醫時都可以送出;只有上下班打卡需要連公司 Wi-Fi。', 'TRUE'],
 ];
 
 // ─────────────────────────── 常數 ───────────────────────────
@@ -1920,7 +1920,8 @@ function leaveIntroText_(t) {
   return `🗓 ${t.name} 請假說明\n\n` +
     '請用下面的「🗓 請假」按鈕開啟申請表。\n\n' +
     '假別與規則:\n' + lines.join('\n') +
-    '\n\n送出後由主管審核,結果會用訊息通知你。';
+    '\n\n請假不限地點,在家也可以送出 —— 只有打卡需要連公司 Wi-Fi。' +
+    '\n送出後由主管審核,結果會用訊息通知你。';
 }
 
 function myLeavesText_(t, userId) {
@@ -2277,6 +2278,33 @@ const ADMIN_ACTIONS = {
     requirePlatform_(b.token);
     const co = updateCompany_(b.code, { name: b.name, status: b.status, note: b.note });
     return { company: { code: co.code, name: co.name, status: co.status } };
+  },
+
+  /** 後台首頁看板:今天誰到了、誰沒到、誰遲到 */
+  'dash.today': function (b) {
+    const ctx = requireCompany_(b.token, b.company);
+    const t = ctx.t;
+    const board = tTodayBoard_(t);
+    const ym = Utilities.formatDate(new Date(), CONFIG.TZ, 'yyyy/MM');
+    const m = tMonthlyStats_(t, ym).totals;
+    const emps = tListEmployees_(t);
+    const bot = getBot_(t.code);
+
+    return {
+      company: t.name,
+      platformLabel: PLATFORM_LABEL[bot.platform],
+      sheetUrl: t.ss.getUrl(),
+      board: board,
+      month: { ym: ym, late: m.late, early: m.early, missing: m.missing,
+               manDays: m.manDays, hours: m.hours, leaveDays: m.leaveDays },
+      todo: {
+        pendingEmployees: emps.filter(e => e.pending).length,
+        pendingLeaves: tListLeaves_(t, { status: LEAVE_STATUS.PENDING }).length,
+        unbound: emps.filter(e => !e.bound && e.code).length,
+        ipEnforced: tSettingBool_(t, '啟用IP驗證', true),
+        botReady: botReady_(bot),
+      },
+    };
   },
 
   /** 公司總覽:人數、今日打卡數、設定完成度 */
@@ -3555,6 +3583,86 @@ function sendMonthlyReport_(companyCode, ym) {
 
   logEvent_('INFO', 'monthlyReport', `${t.code} ${month} 已推播給 ${sent} 位管理員`);
   return { ok: true, sent: sent, message: `${month} 月報已推播給 ${sent} 位管理員`, text: text, url: built.url };
+}
+
+// ─────────────────────────── 今日看板 ───────────────────────────
+
+/**
+ * 今天每個人的出勤狀態,後台首頁的主角。
+ * 狀態:請假中 / 未打卡 / 上班中 / 已下班,遲到早退另外標。
+ */
+function tTodayBoard_(t) {
+  const now = new Date();
+  const today = Utilities.formatDate(now, CONFIG.TZ, 'yyyy/MM/dd');
+
+  const emps = tListEmployees_(t).filter(e => e.status === EMP_STATUS.ACTIVE && e.code);
+
+  // 今天的打卡紀錄,依員工分組
+  const byEmp = {};
+  tRead_(t, SHEETS.RECORD).forEach(r => {
+    if (!(r['日期'] instanceof Date)) return;
+    if (Utilities.formatDate(r['日期'], CONFIG.TZ, 'yyyy/MM/dd') !== today) return;
+    const k = String(r['員工編號']).trim().toUpperCase();
+    (byEmp[k] = byEmp[k] || []).push(r);
+  });
+
+  // 今天生效的核准假
+  const onLeave = {};
+  tListLeaves_(t).forEach(l => {
+    if (l.status !== LEAVE_STATUS.APPROVED) return;
+    if (l.from <= today && today <= l.to) onLeave[String(l.employeeCode).toUpperCase()] = l;
+  });
+
+  const people = emps.map(e => {
+    const k = e.code.toUpperCase();
+    const leave = onLeave[k];
+    const list = (byEmp[k] || []).sort((a, b) => new Date(a['時間戳記']) - new Date(b['時間戳記']));
+    const inRec  = list.filter(r => r['類型'] === PUNCH_IN)[0] || null;
+    const outRec = list.filter(r => r['類型'] === PUNCH_OUT).slice(-1)[0] || null;
+
+    let state;
+    if (leave)       state = '請假中';
+    else if (!inRec) state = '未打卡';
+    else if (outRec) state = '已下班';
+    else             state = '上班中';
+
+    return {
+      code: e.code, name: e.name, dept: e.dept,
+      state: state,
+      leaveType: leave ? leave.leaveType : '',
+      inTime:  inRec  ? fmtTime_(inRec['時間戳記'])  : '',
+      outTime: outRec ? fmtTime_(outRec['時間戳記']) : '',
+      late:    inRec  && String(inRec['判定']).indexOf('遲到')  === 0 ? String(inRec['判定'])  : '',
+      early:   outRec && String(outRec['判定']).indexOf('早退') === 0 ? String(outRec['判定']) : '',
+      location: inRec ? String(inRec['地點'] || '') : (outRec ? String(outRec['地點'] || '') : ''),
+      verified: inRec ? String(inRec['IP驗證'] || '') : '',
+    };
+  });
+
+  // 未打卡的排最前面,再來是遲到,已下班的排最後
+  const rank = { '未打卡': 0, '上班中': 1, '已下班': 2, '請假中': 3 };
+  people.sort((a, b) => (rank[a.state] - rank[b.state]) || (a.late ? -1 : 1) || (a.code < b.code ? -1 : 1));
+
+  const leaveCount = people.filter(p => p.state === '請假中').length;
+  const expected = people.length - leaveCount;
+  const arrived  = people.filter(p => p.state === '上班中' || p.state === '已下班').length;
+
+  return {
+    date: Utilities.formatDate(now, CONFIG.TZ, 'yyyy/MM/dd (E)'),
+    serverTime: Utilities.formatDate(now, CONFIG.TZ, 'HH:mm'),
+    workStart: fmtHHmm_(t, '上班時間', 9, 0),
+    workEnd:   fmtHHmm_(t, '下班時間', 18, 0),
+    counts: {
+      headcount: people.length,
+      expected: expected,
+      arrived: arrived,
+      notYet: expected - arrived,
+      onLeave: leaveCount,
+      late: people.filter(p => p.late).length,
+      leftAlready: people.filter(p => p.state === '已下班').length,
+    },
+    people: people,
+  };
 }
 
 

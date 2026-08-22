@@ -48,6 +48,34 @@
   .grid{display:grid;gap:14px}
   .g2{grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
   .g4{grid-template-columns:repeat(auto-fit,minmax(120px,1fr))}
+
+  /* ── 今日看板 ── */
+  /* 狀態色沿用 dataviz 的固定 status 色階;每個狀態都同時有圖示與文字,不靠顏色傳達意思 */
+  .board{--good:#0ca30c; --warn:#fab219; --serious:#ec835a; --crit:#d03b3b}
+  .kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:12px;margin-bottom:18px}
+  .kpi .t{background:var(--soft);border-radius:14px;padding:16px 14px;position:relative;overflow:hidden}
+  .kpi .t .n{font-size:34px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.1}
+  .kpi .t .l{font-size:12px;color:var(--muted);margin-top:4px}
+  .kpi .t .s{font-size:11px;color:var(--muted);margin-top:2px}
+  .kpi .t::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--muted)}
+  .kpi .t.good::before{background:var(--good)}
+  .kpi .t.crit::before{background:var(--crit)}
+  .kpi .t.serious::before{background:var(--serious)}
+
+  .bar{height:10px;border-radius:5px;background:var(--soft);overflow:hidden;display:flex;margin-bottom:6px}
+  .bar i{display:block;height:100%}
+  .bar i+i{margin-left:2px}          /* 相鄰色塊之間留 2px 底色縫 */
+  .barlab{font-size:12px;color:var(--muted);display:flex;gap:14px;flex-wrap:wrap;margin-bottom:20px}
+  .barlab b{font-weight:600;color:var(--ink)}
+  .sw{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:baseline}
+
+  .st{display:inline-flex;align-items:center;gap:5px;font-size:13px;font-weight:600;white-space:nowrap}
+  .st.good{color:var(--good)} .st.crit{color:var(--crit)}
+  .st.serious{color:var(--serious)} .st.mute{color:var(--muted)}
+  .todo{display:flex;gap:10px;flex-wrap:wrap}
+  .todo a{display:flex;align-items:center;gap:8px;text-decoration:none;font-size:13px;
+          background:var(--soft);border-radius:10px;padding:10px 14px;color:var(--ink);cursor:pointer}
+  .todo a b{font-size:16px}
   .stats{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(130px,1fr))}
   .stat{background:var(--soft);border-radius:12px;padding:14px}
   .stat .n{font-size:26px;font-weight:700;font-variant-numeric:tabular-nums}
@@ -147,7 +175,25 @@ const ADMIN_LIFF_ID = CFG.ADMIN_LIFF_ID || '';
 const CONFIG_OK = (CFG.GAS_URL || '').indexOf('script.google.com') > 0
                   && (CFG.GAS_URL || '').indexOf('請貼上') < 0;
 
-let TOKEN = localStorage.getItem('punch_admin_token') || '';
+const $ = id => document.getElementById(id);
+
+/** 所有插進 innerHTML 的資料都要過這一關,員工姓名、部門、事由都是使用者輸入 */
+function esc(s){
+  return String(s == null ? '' : s)
+    .replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+/**
+ * localStorage 在無痕模式、企業政策或某些內嵌環境下會直接丟例外,
+ * 沒包起來的話整個後台會在第一行就掛掉。存不了就退化成「這次開啟有效」。
+ */
+const Store = {
+  get(k){ try { return localStorage.getItem(k) || ''; } catch(e){ return ''; } },
+  set(k,v){ try { localStorage.setItem(k,v); } catch(e){ /* 這次開啟仍可用,只是不會記住 */ } },
+  del(k){ try { localStorage.removeItem(k); } catch(e){ /* noop */ } },
+};
+
+let TOKEN = Store.get('punch_admin_token');
 let ME = null, COMPANIES = [], CO = null, TAB = 'overview';
 let AUTH = null;                                    // {idToken} 或 {initData}
 const tg = window.Telegram && window.Telegram.WebApp;
@@ -229,7 +275,7 @@ async function boot(){
     try{
       ME = (await api('admin.me')).me;
       return openApp();
-    }catch(e){ TOKEN=''; localStorage.removeItem('punch_admin_token'); }
+    }catch(e){ TOKEN=''; Store.del('punch_admin_token'); }
   }
 
   if(await ensureAuth(false)) await tryLogin();
@@ -239,7 +285,7 @@ async function tryLogin(extra){
   try{
     const r = await api('admin.login', Object.assign({}, AUTH, extra||{}));
     TOKEN = r.token; ME = r.me;
-    localStorage.setItem('punch_admin_token', TOKEN);
+    Store.set('punch_admin_token', TOKEN);
     openApp();
   }catch(e){
     $('loginHint').textContent = e.message;
@@ -262,7 +308,7 @@ $('btnJoin').addEventListener('click', async ()=>{
     if(setup){
       const r = await api('admin.bootstrap', Object.assign({setupCode: setup}, AUTH));
       TOKEN = r.token; ME = r.me;
-      localStorage.setItem('punch_admin_token', TOKEN);
+      Store.set('punch_admin_token', TOKEN);
       return openApp();
     }
     await tryLogin({inviteCode: invite});
@@ -270,7 +316,7 @@ $('btnJoin').addEventListener('click', async ()=>{
 });
 
 function logout(silent){
-  TOKEN=''; ME=null; localStorage.removeItem('punch_admin_token');
+  TOKEN=''; ME=null; Store.del('punch_admin_token');
   $('appView').classList.add('hide');
   $('loginView').classList.remove('hide');
   if(!silent) toast('已登出');
@@ -341,36 +387,97 @@ function render(){
   fn(v).catch(e => { v.innerHTML = `<div class="card"><div class="empty">${esc(e.message)}</div></div>`; });
 }
 
-// ══════════════════════ 總覽 ══════════════════════
+// ══════════════════════ 總覽(今日看板)══════════════════════
 async function viewOverview(v){
-  const d = await api('company.overview');
+  const d = await api('dash.today');
+  const b = d.board, c = b.counts, m = d.month, todo = d.todo;
+
+  // 狀態 → 圖示 + 文字 + 色階。顏色只是輔助,圖示與文字才是主要訊息
+  const ST = {
+    '未打卡': {icon:'⚠️', cls:'crit'},
+    '上班中': {icon:'🟢', cls:'good'},
+    '已下班': {icon:'🏁', cls:'mute'},
+    '請假中': {icon:'🌴', cls:'mute'},
+  };
+
+  const pct = n => c.expected ? Math.round(n / c.expected * 100) : 0;
+  const arrivedPct = pct(c.arrived), notYetPct = 100 - arrivedPct;
+
   v.innerHTML = `
-    <h2>${esc(d.name)}</h2>
-    <p class="sub">公司代碼 ${esc(CO)} · 使用 ${esc(d.platformLabel)}</p>
-    <div class="card">
-      <div class="stats">
-        <div class="stat"><div class="n">${d.active}</div><div class="l">在職員工</div></div>
-        <div class="stat"><div class="n">${d.bound}</div><div class="l">已綁定 LINE</div></div>
-        <div class="stat"><div class="n">${d.todayIn}</div><div class="l">今日上班打卡</div></div>
-        <div class="stat"><div class="n">${d.todayOut}</div><div class="l">今日下班打卡</div></div>
-        <div class="stat"><div class="n">${d.ipRules}</div><div class="l">啟用中網段</div></div>
+    <div class="board">
+      <h2>${esc(d.company)}</h2>
+      <p class="sub">${esc(b.date)} · 現在 ${esc(b.serverTime)} · 上班 ${esc(b.workStart)} / 下班 ${esc(b.workEnd)}</p>
+
+      <div class="card">
+        <div class="kpi">
+          <div class="t"><div class="n">${c.expected}</div><div class="l">應到</div>
+            <div class="s">在職 ${c.headcount} 人</div></div>
+          <div class="t good"><div class="n">${c.arrived}</div><div class="l">已到</div>
+            <div class="s">${arrivedPct}% 到勤</div></div>
+          <div class="t ${c.notYet?'crit':''}"><div class="n">${c.notYet}</div><div class="l">未打卡</div>
+            <div class="s">${c.notYet?'需要關心':'全員到齊'}</div></div>
+          <div class="t ${c.late?'serious':''}"><div class="n">${c.late}</div><div class="l">遲到</div>
+            <div class="s">${c.leftAlready} 人已下班</div></div>
+          <div class="t"><div class="n">${c.onLeave}</div><div class="l">請假中</div>
+            <div class="s">已核准</div></div>
+        </div>
+
+        ${c.expected ? `
+        <div class="bar" role="img" aria-label="到勤 ${c.arrived} 人,未打卡 ${c.notYet} 人">
+          ${c.arrived?`<i style="width:${arrivedPct}%;background:var(--good)"></i>`:''}
+          ${c.notYet?`<i style="width:${notYetPct}%;background:var(--crit)"></i>`:''}
+        </div>
+        <div class="barlab">
+          <span><span class="sw" style="background:var(--good)"></span>已到 <b>${c.arrived}</b></span>
+          <span><span class="sw" style="background:var(--crit)"></span>未打卡 <b>${c.notYet}</b></span>
+          <span><span class="sw" style="background:var(--muted)"></span>請假 <b>${c.onLeave}</b>(不計入應到)</span>
+        </div>` : ''}
+
+        ${(todo.pendingEmployees||todo.pendingLeaves||!todo.ipEnforced||!todo.botReady) ? `
+        <div class="todo">
+          ${todo.pendingEmployees?`<a data-go="employees"><b>${todo.pendingEmployees}</b> 位員工等你設定 →</a>`:''}
+          ${todo.pendingLeaves?`<a data-go="leaves"><b>${todo.pendingLeaves}</b> 筆請假待審核 →</a>`:''}
+          ${!todo.ipEnforced?`<a data-go="settings" style="color:var(--crit)"><b>⚠️</b> IP 驗證已關閉,任何地方都能打卡 →</a>`:''}
+          ${!todo.botReady?`<a data-go="bot" style="color:var(--crit)"><b>⚠️</b> ${esc(d.platformLabel)} 設定未完成 →</a>`:''}
+        </div>` : ''}
       </div>
-    </div>
-    <div class="card">
-      <h3>設定檢查</h3>
-      <table><tbody>
-        <tr><td>${esc(d.platformLabel)} 設定</td><td>${d.botReady?'<span class="tag ok">已完成</span>':'<span class="tag bad">未完成</span>'}</td></tr>
-        <tr><td>打卡頁連結</td><td>${d.punchUrl?`<span class="mono">${esc(d.punchUrl)}</span>`:'<span class="tag bad">尚未產生</span>'}</td></tr>
-        <tr><td>待設定員工</td><td>${d.pendingEmployees?`<span class="tag warn">${d.pendingEmployees} 人等你設定</span>`:'<span class="tag ok">無</span>'}</td></tr>
-        <tr><td>待審核請假</td><td>${d.pendingLeaves?`<span class="tag warn">${d.pendingLeaves} 筆待處理</span>`:'<span class="tag ok">無</span>'}</td></tr>
-        <tr><td>地點(IP)驗證</td><td>${d.ipEnforced?'<span class="tag ok">啟用中</span>':'<span class="tag warn">已關閉</span>'}</td></tr>
-        <tr><td>允許網段</td><td>${d.ipRules>0?`<span class="tag ok">${d.ipRules} 條</span>`:'<span class="tag bad">尚未設定,所有人都打不了卡</span>'}</td></tr>
-        <tr><td>未綁定 LINE 的員工</td><td>${d.active-d.bound>0?`<span class="tag warn">${d.active-d.bound} 人</span>`:'<span class="tag ok">全部完成</span>'}</td></tr>
-      </tbody></table>
-      <div class="row" style="margin-top:14px">
-        <a href="${esc(d.sheetUrl)}" target="_blank" rel="noopener"><button>開啟這家公司的試算表 ↗</button></a>
+
+      <div class="card">
+        <h3>今日出勤(${b.people.length})</h3>
+        <div class="tw"><table>
+          <thead><tr><th>狀態</th><th>員工</th><th>上班</th><th>下班</th><th>地點</th><th>備註</th></tr></thead>
+          <tbody>${b.people.length ? b.people.map(p=>{
+            const st = ST[p.state] || {icon:'', cls:'mute'};
+            const notes = [p.late, p.early, p.leaveType].filter(Boolean).join(' · ');
+            return `<tr>
+              <td><span class="st ${st.cls}">${st.icon} ${esc(p.state)}</span></td>
+              <td>${esc(p.name)}<div class="note">${esc(p.code)}${p.dept?' · '+esc(p.dept):''}</div></td>
+              <td class="mono">${esc(p.inTime||'—')}</td>
+              <td class="mono">${esc(p.outTime||'—')}</td>
+              <td>${esc(p.location||'—')}</td>
+              <td>${notes?`<span class="st serious">${esc(notes)}</span>`:''}</td>
+            </tr>`;}).join('') : '<tr><td colspan="6" class="empty">還沒有在職員工,先到「員工」分頁設定</td></tr>'}</tbody>
+        </table></div>
+      </div>
+
+      <div class="card">
+        <h3>${esc(m.ym)} 本月累計</h3>
+        <div class="grid g4">
+          <div class="stat"><div class="n">${m.manDays}</div><div class="l">出勤人日</div></div>
+          <div class="stat"><div class="n">${m.hours}</div><div class="l">總工時</div></div>
+          <div class="stat"><div class="n">${m.late+m.early}</div><div class="l">遲到早退</div></div>
+          <div class="stat"><div class="n">${m.missing}</div><div class="l">缺卡</div></div>
+          <div class="stat"><div class="n">${m.leaveDays}</div><div class="l">請假天數</div></div>
+        </div>
+        <p class="note" style="margin-top:14px">
+          明細與月報在「紀錄與報表」。原始資料在
+          <a href="${esc(d.sheetUrl)}" target="_blank" rel="noopener">試算表 ↗</a>
+          （平常不用開,出勤紀錄依法須保存 5 年,別刪)
+        </p>
       </div>
     </div>`;
+
+  v.querySelectorAll('[data-go]').forEach(a => a.onclick = ()=>{ TAB = a.dataset.go; render(); });
 }
 
 // ══════════════════════ 員工 ══════════════════════
