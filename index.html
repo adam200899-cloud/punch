@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>員工打卡</title>
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="config.js"></script>
+<style>
+  :root{
+    --bg:#f4f6fb; --card:#fff; --ink:#1b2436; --muted:#7b869c;
+    --brand:#1f3864; --ok:#1DB446; --warn:#E8A33D; --bad:#D64545; --line:#e6eaf2;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{ --bg:#12151c; --card:#1b1f2a; --ink:#eef1f6; --muted:#98a2b6; --line:#2b3140; --brand:#3f6bb0; }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font-family:-apple-system,BlinkMacSystemFont,"Noto Sans TC","Segoe UI",sans-serif;
+       -webkit-font-smoothing:antialiased;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+  .wrap{max-width:460px;margin:0 auto;padding:20px 16px 40px}
+  .card{background:var(--card);border-radius:16px;padding:20px;margin-bottom:14px;
+        box-shadow:0 1px 3px rgba(16,24,40,.06),0 8px 24px rgba(16,24,40,.05)}
+
+  .head{text-align:center;padding:26px 20px}
+  .company{font-size:13px;color:var(--muted);letter-spacing:.05em}
+  .clock{font-size:52px;font-weight:700;letter-spacing:-.02em;margin:6px 0 2px;font-variant-numeric:tabular-nums}
+  .date{font-size:14px;color:var(--muted);min-height:20px}
+  .who{margin-top:14px;padding-top:14px;border-top:1px solid var(--line);font-size:15px;min-height:22px}
+  .who b{font-weight:600}
+  .who span{color:var(--muted);font-size:13px;margin-left:6px}
+
+  .status{display:flex;align-items:center;gap:10px;font-size:14px;line-height:1.5}
+  .dot{width:10px;height:10px;border-radius:50%;flex:none}
+  .dot.ok{background:var(--ok)} .dot.bad{background:var(--bad)} .dot.wait{background:var(--muted)}
+  .status .sub{display:block;color:var(--muted);font-size:12px;margin-top:2px;word-break:break-all}
+
+  .btns{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  button{font:inherit;border:0;border-radius:14px;padding:20px 8px;font-size:17px;font-weight:600;
+         color:#fff;cursor:pointer;transition:transform .08s,opacity .15s}
+  button:active{transform:scale(.97)}
+  button:disabled{opacity:.4;cursor:not-allowed}
+  .b-in{background:var(--brand)} .b-out{background:#4a5468}
+  .b-in.suggest{box-shadow:0 0 0 3px rgba(31,56,100,.25)}
+  .b-out.suggest{box-shadow:0 0 0 3px rgba(74,84,104,.3)}
+  .ghost{background:transparent;color:var(--muted);font-size:13px;font-weight:500;padding:10px;width:100%}
+
+  .today{display:grid;grid-template-columns:1fr 1fr;gap:12px;text-align:center}
+  .today div{padding:10px 4px;border-radius:12px;background:rgba(127,140,170,.08)}
+  .today .lb{font-size:12px;color:var(--muted)}
+  .today .vl{font-size:24px;font-weight:700;font-variant-numeric:tabular-nums;margin-top:2px}
+  .today .jd{font-size:11px;color:var(--muted);margin-top:2px}
+
+  .msg{padding:14px 16px;border-radius:12px;font-size:14px;line-height:1.6;margin-bottom:14px;
+       display:none;white-space:pre-line}
+  .msg.show{display:block}
+  .msg.ok{background:rgba(29,180,70,.12);color:var(--ok)}
+  .msg.bad{background:rgba(214,69,69,.12);color:var(--bad)}
+  .msg.warn{background:rgba(232,163,61,.14);color:var(--warn)}
+
+  .hint{font-size:12px;color:var(--muted);text-align:center;line-height:1.7;margin-top:18px}
+
+  /* 打卡結果:蓋滿整個畫面,結果只有成功或失敗兩種,不讓人看錯 */
+  .result{position:fixed;inset:0;z-index:50;display:none;flex-direction:column;
+          align-items:center;justify-content:center;padding:32px 24px;text-align:center;
+          background:var(--bg);animation:pop .22s ease-out}
+  .result.show{display:flex}
+  @keyframes pop{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:scale(1)}}
+  .result .mark{width:96px;height:96px;border-radius:50%;display:flex;align-items:center;
+                justify-content:center;font-size:52px;color:#fff;margin-bottom:22px}
+  .result.ok  .mark{background:var(--ok)}
+  .result.bad .mark{background:var(--bad)}
+  .result .big{font-size:30px;font-weight:700;letter-spacing:.02em}
+  .result.ok  .big{color:var(--ok)}
+  .result.bad .big{color:var(--bad)}
+  .result .why{font-size:19px;font-weight:600;margin-top:12px;line-height:1.5}
+  .result .when{font-size:44px;font-weight:700;margin-top:10px;font-variant-numeric:tabular-nums}
+  .result .meta{font-size:14px;color:var(--muted);margin-top:12px;line-height:1.85;
+                white-space:pre-line;max-width:340px}
+  .result .acts{margin-top:30px;display:flex;gap:10px;width:100%;max-width:340px}
+  .result .acts button{flex:1;padding:15px}
+  .result .acts .alt{background:transparent;color:var(--muted);border:1px solid var(--line)}
+  .skeleton{height:14px;border-radius:7px;background:linear-gradient(90deg,rgba(127,140,170,.12),rgba(127,140,170,.22),rgba(127,140,170,.12));
+            background-size:200% 100%;animation:sh 1.2s infinite}
+  @keyframes sh{0%{background-position:200% 0}100%{background-position:-200% 0}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="card head">
+    <div class="company" id="company">載入中…</div>
+    <div class="clock" id="clock">--:--</div>
+    <div class="date" id="date"></div>
+    <div class="who" id="who"><div class="skeleton" style="width:60%;margin:0 auto"></div></div>
+  </div>
+
+  <div id="msg" class="msg"></div>
+
+  <div class="card">
+    <div class="status">
+      <span class="dot wait" id="netDot"></span>
+      <div>
+        <span id="netText">正在啟動…</span>
+        <span class="sub" id="netSub"></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="btns" id="btns">
+      <button class="b-in"  id="btnIn"  disabled>上班打卡</button>
+      <button class="b-out" id="btnOut" disabled>下班打卡</button>
+    </div>
+    <button class="ghost" id="btnRefresh">重新偵測網路位置</button>
+  </div>
+
+  <div class="card">
+    <div class="today">
+      <div><div class="lb">今日上班</div><div class="vl" id="tIn">--:--</div><div class="jd" id="tInJ">尚未打卡</div></div>
+      <div><div class="lb">今日下班</div><div class="vl" id="tOut">--:--</div><div class="jd" id="tOutJ">尚未打卡</div></div>
+    </div>
+  </div>
+
+  <div class="hint" id="hint">
+    打卡前請確認手機已連上公司 Wi-Fi,<br>使用行動網路將無法打卡。
+  </div>
+</div>
+
+<div class="result" id="result">
+  <div class="mark" id="rMark">✓</div>
+  <div class="big" id="rBig">打卡成功</div>
+  <div class="why" id="rWhy"></div>
+  <div class="when" id="rWhen"></div>
+  <div class="meta" id="rMeta"></div>
+  <div class="acts" id="rActs"></div>
+</div>
+
+<script>
+/* ─────────────────────────────────────────────
+   設定集中在 config.js,這裡不用改
+   ───────────────────────────────────────────── */
+const CFG = window.PUNCH_CONFIG || {};
+const USE_PROXY = !!CFG.PROXY_URL;
+const API_URL = USE_PROXY ? CFG.PROXY_URL : (CFG.GAS_URL || '') + '?p=api';
+const CONFIG_OK = /^https:\/\/(script\.google\.com|[\w.-]+\.workers\.dev)/.test(USE_PROXY ? CFG.PROXY_URL : CFG.GAS_URL || '')
+                  && (CFG.GAS_URL || '').indexOf('請貼上') < 0;
+
+const $ = id => document.getElementById(id);
+let company = null, platform = null, auth = {}, ips = [], busy = false;
+// 從常駐鍵盤按「上班打卡 / 下班打卡」進來時,網址會帶 type,只顯示那一顆按鈕
+const FORCED = (new URLSearchParams(location.search).get('type')||'').toLowerCase();
+const FORCED_TYPE = FORCED==='in' ? '上班' : FORCED==='out' ? '下班' : null;
+const tg = window.Telegram && window.Telegram.WebApp;
+
+// ── 公司代碼:優先讀網址,LIFF 轉址時會塞在 liff.state 裡 ──
+function readCompany(){
+  const direct = new URLSearchParams(location.search).get('c');
+  if(direct) return direct.toUpperCase();
+  const state = new URLSearchParams(location.search).get('liff.state');
+  if(state){
+    const m = decodeURIComponent(state).match(/[?&]c=([^&]+)/);
+    if(m) return decodeURIComponent(m[1]).toUpperCase();
+  }
+  return null;
+}
+
+// ── 時鐘 ──
+function tick(){
+  const d = new Date(), p = n => String(n).padStart(2,'0');
+  $('clock').textContent = p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds());
+}
+setInterval(tick, 1000); tick();
+
+function say(kind, text){ const el=$('msg'); el.className='msg show '+kind; el.textContent=text; }
+function clearMsg(){ $('msg').className='msg'; }
+function setNet(state, text, sub){
+  $('netDot').className='dot '+state; $('netText').textContent=text; $('netSub').textContent=sub||'';
+}
+function setButtons(enabled, suggest){
+  $('btnIn').disabled=!enabled; $('btnOut').disabled=!enabled;
+  $('btnIn').classList.toggle('suggest', suggest==='上班');
+  $('btnOut').classList.toggle('suggest', suggest==='下班');
+}
+
+/** 指定了 type 就收成一顆大按鈕,少一次誤按的機會 */
+function applyForcedType(){
+  if(!FORCED_TYPE) return;
+  const keep = FORCED_TYPE==='上班' ? 'btnIn' : 'btnOut';
+  const drop = FORCED_TYPE==='上班' ? 'btnOut' : 'btnIn';
+  $(drop).style.display = 'none';
+  $('btns').style.gridTemplateColumns = '1fr';
+  $(keep).textContent = '確認'+FORCED_TYPE+'打卡';
+}
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+/**
+ * 打卡結果畫面。只有兩種:成功、失敗。
+ * @param {boolean} ok
+ * @param {{why?:string, when?:string, meta?:string, retry?:boolean}} d
+ */
+function showResult(ok, d){
+  const el = $('result');
+  el.className = 'result show ' + (ok ? 'ok' : 'bad');
+  $('rMark').textContent = ok ? '✓' : '✕';
+  $('rBig').textContent  = ok ? '打卡成功' : '打卡失敗';
+  $('rWhy').textContent  = d.why || '';
+  $('rWhen').textContent = d.when || '';
+  $('rMeta').textContent = d.meta || '';
+
+  const acts = $('rActs');
+  acts.innerHTML = '';
+  if(d.retry){
+    const again = document.createElement('button');
+    again.className = 'b-in';
+    again.textContent = '我已連上公司 Wi-Fi,重試';
+    again.onclick = async ()=>{ hideResult(); await refresh(); };
+    acts.appendChild(again);
+  }
+  const close = document.createElement('button');
+  close.className = d.retry ? 'alt' : 'b-in';
+  close.textContent = d.retry ? '關閉' : '完成';
+  close.onclick = ()=>{ hideResult(); closeWindow(); };
+  acts.appendChild(close);
+}
+function hideResult(){ $('result').className = 'result'; }
+
+// ── 對外 IP 偵測 ──
+function withTimeout(p, ms){
+  return Promise.race([p, new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')), ms))]);
+}
+async function fetchIp(url, parse){
+  const r = await withTimeout(fetch(url,{cache:'no-store'}), 5000);
+  if(!r.ok) throw new Error('HTTP '+r.status);
+  return parse(await r.text());
+}
+async function detectIps(){
+  const results = await Promise.allSettled([
+    fetchIp('https://api4.ipify.org?format=json', t=>JSON.parse(t).ip),
+    fetchIp('https://api64.ipify.org?format=json', t=>JSON.parse(t).ip),
+    fetchIp('https://www.cloudflare.com/cdn-cgi/trace', t=>(t.match(/^ip=(.+)$/m)||[])[1]),
+  ]);
+  const set = new Set();
+  results.forEach(r => { if(r.status==='fulfilled' && r.value) set.add(String(r.value).trim()); });
+  return [...set];
+}
+
+// ── 後端 ──
+async function api(payload){
+  const res = await fetch(API_URL, {
+    method:'POST',
+    headers:{'Content-Type':'text/plain;charset=utf-8'},  // 避開 CORS preflight
+    body: JSON.stringify(Object.assign({company: company}, payload)),
+    redirect:'follow',
+  });
+  return res.json();
+}
+
+// ── 主流程 ──
+async function boot(){
+  if(!CONFIG_OK){
+    $('company').textContent = '尚未設定';
+    $('who').textContent = '';
+    setNet('bad','後端網址還沒填','');
+    say('bad','config.js 裡的 GAS_URL 還沒填。\n請把 Apps Script 部署後拿到的 /exec 網址貼進去。');
+    return;
+  }
+  company = readCompany();
+  if(!company){
+    $('company').textContent='設定錯誤'; $('who').textContent='';
+    setNet('bad','打卡連結不完整','網址缺少公司代碼');
+    say('bad','這個打卡連結沒有帶公司代碼。請聯絡管理員確認 LIFF 的 Endpoint URL 結尾要有 ?c=公司代碼');
+    return;
+  }
+
+  let cfg;
+  try{
+    cfg = await api({action:'config'});
+  }catch(e){
+    $('who').textContent='';
+    setNet('bad','無法連線到伺服器', String(e.message||e));
+    return;
+  }
+  if(!cfg.ok){
+    $('company').textContent='設定錯誤'; $('who').textContent='';
+    setNet('bad','無法載入公司設定','');
+    say('bad', cfg.message || '公司設定錯誤');
+    return;
+  }
+  $('company').textContent = cfg.companyName;
+  platform = cfg.platform;
+
+  if(platform === 'telegram'){
+    if(!tg || !tg.initData){
+      $('who').textContent='';
+      setNet('bad','請從 Telegram 開啟','');
+      say('bad','這一頁要從 Telegram 聊天室的「打卡」按鈕開啟才能辨識身分。請回到你們公司的 Telegram bot,點輸入框旁邊的「打卡」按鈕。');
+      return;
+    }
+    tg.ready(); tg.expand();
+    auth = { initData: tg.initData };
+  }else{
+    try{
+      await liff.init({ liffId: cfg.liffId });
+    }catch(e){
+      $('who').textContent='';
+      setNet('bad','LIFF 初始化失敗', String(e.message||e));
+      say('bad','無法初始化 LIFF,請確認後台填的 LIFF ID 與 Endpoint URL 設定正確,並從 LINE 內開啟此頁。');
+      return;
+    }
+    if(!liff.isLoggedIn()){ liff.login({ redirectUri: location.href }); return; }
+    const idToken = liff.getIDToken();
+    if(!idToken){
+      $('who').textContent='';
+      say('bad','取不到 ID Token,請在 LINE Developers 確認 LIFF 已開啟 openid 權限,然後重新開啟本頁。');
+      return;
+    }
+    auth = { idToken: idToken };
+  }
+
+  applyForcedType();
+  await refresh();
+}
+
+/** 打完卡自動關閉迷你視窗 */
+function closeWindow(){
+  if(platform === 'telegram'){ if(tg) tg.close(); }
+  else if(typeof liff !== 'undefined' && liff.isInClient && liff.isInClient()){ liff.closeWindow(); }
+}
+
+async function refresh(){
+  clearMsg();
+  setButtons(false);
+  setNet('wait','正在偵測網路位置…','');
+
+  if(!USE_PROXY){
+    ips = await detectIps();
+    if(ips.length === 0){
+      setNet('bad','無法取得網路位置','請檢查網路連線後再試一次');
+      return;
+    }
+  }
+
+  let r;
+  try{ r = await api(Object.assign({action:'status', ips}, auth)); }
+  catch(e){ setNet('bad','無法連線到伺服器', String(e.message||e)); return; }
+
+  if(!r.ok){
+    $('company').textContent = r.companyName || $('company').textContent;
+    $('who').textContent = r.displayName || '';
+    if(r.code === 'NOT_BOUND'){
+      say('warn','你的 LINE 帳號還沒有綁定員工資料。\n請回到聊天室輸入「綁定 你的員工編號」,例如:綁定 A001');
+      setNet('bad','尚未完成綁定','');
+    }else{
+      say('bad', r.message || '發生錯誤');
+      setNet('bad','無法打卡','');
+    }
+    return;
+  }
+
+  $('company').textContent = r.companyName;
+  $('date').textContent = r.dateText;
+  $('who').innerHTML = '<b>'+esc(r.name)+'</b><span>'+esc(r.code)+(r.dept?' · '+esc(r.dept):'')+'</span>';
+  $('hint').innerHTML = '上班 '+esc(r.workStart)+' · 下班 '+esc(r.workEnd)+
+                        '<br>打卡前請確認手機已連上公司 Wi-Fi,使用行動網路將無法打卡。';
+  $('tIn').textContent   = r.today.in  || '--:--';
+  $('tOut').textContent  = r.today.out || '--:--';
+  $('tInJ').textContent  = r.today.inJudgement  || '尚未打卡';
+  $('tOutJ').textContent = r.today.outJudgement || '尚未打卡';
+
+  const c = r.ipCheck || {};
+  if(!c.enforced){
+    setNet('ok','地點驗證已關閉(測試模式)', c.ip);
+    setButtons(true, r.suggest);
+  }else if(c.allowed){
+    setNet('ok','已在「'+c.location+'」網路環境內', c.ip);
+    setButtons(true, r.suggest);
+  }else{
+    setNet('bad','不在公司網路環境內', c.ip ? ('目前位置:'+c.ip) : '');
+    say('bad', (c.hint || '你目前不在公司網路環境內,打卡沒有完成。') + '\n連上之後按下面的「重新偵測網路位置」。');
+    setButtons(false, r.suggest);
+  }
+}
+
+async function punch(type){
+  if(busy) return;
+  busy = true; setButtons(false); clearMsg();
+  const btn = $(type === '上班' ? 'btnIn' : 'btnOut');
+  btn.textContent = '打卡中…';
+
+  try{
+    const r = await api(Object.assign({action:'punch', type, ips, ua: navigator.userAgent}, auth));
+
+    if(r.ok){
+      showResult(true, {
+        why:  r.type + '打卡',
+        when: r.time,
+        meta: `${r.dateText}\n${r.name}(${r.code})\n${r.location} · ${r.judgement}`,
+      });
+      refresh();                      // 背景更新今日狀態,不擋住結果畫面
+      if(platform === 'telegram' || (typeof liff !== 'undefined' && liff.isInClient && liff.isInClient())){
+        setTimeout(()=>{ hideResult(); closeWindow(); }, 3000);
+      }
+    }else if(r.code === 'IP_DENIED'){
+      showResult(false, {
+        why:  r.title || 'IP 不符合',
+        meta: (r.ip ? `目前位置:${r.ip}\n\n` : '') + (r.message || ''),
+        retry: true,
+      });
+      refresh();
+    }else{
+      showResult(false, { why: r.message || '打卡沒有完成', retry: r.code !== 'NOT_BOUND' });
+    }
+  }catch(e){
+    showResult(false, { why: '連線失敗', meta: String(e.message || e), retry: true });
+  }finally{
+    $('btnIn').textContent  = FORCED_TYPE==='上班' ? '確認上班打卡' : '上班打卡';
+    $('btnOut').textContent = FORCED_TYPE==='下班' ? '確認下班打卡' : '下班打卡';
+    busy = false;
+  }
+}
+
+$('btnIn').addEventListener('click',  ()=>punch('上班'));
+$('btnOut').addEventListener('click', ()=>punch('下班'));
+$('btnRefresh').addEventListener('click', refresh);
+
+boot();
+</script>
+</body>
+</html>

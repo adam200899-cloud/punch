@@ -1,0 +1,1262 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>打卡系統管理後台</title>
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="config.js"></script>
+<style>
+  :root{
+    --bg:#f4f6fb; --card:#fff; --ink:#1b2436; --muted:#7b869c; --line:#e3e8f0;
+    --brand:#1f3864; --brand-ink:#fff; --ok:#1DB446; --warn:#E8A33D; --bad:#D64545;
+    --soft:rgba(127,140,170,.08);
+  }
+  @media (prefers-color-scheme:dark){
+    :root{ --bg:#101318; --card:#191d26; --ink:#eef1f6; --muted:#98a2b6; --line:#2a303c;
+           --brand:#4a7bc4; --soft:rgba(127,140,170,.12); }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-size:15px;line-height:1.6;
+       font-family:-apple-system,BlinkMacSystemFont,"Noto Sans TC","Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}
+  a{color:var(--brand)}
+  h2{font-size:19px;margin:0 0 4px} h3{font-size:15px;margin:0 0 10px}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 18px}
+
+  /* ── 登入 ── */
+  .login{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+  .login .card{width:100%;max-width:400px;text-align:center;padding:36px 28px}
+  .login .logo{width:52px;height:52px;border-radius:14px;background:var(--brand);color:#fff;
+               display:grid;place-items:center;font-size:24px;margin:0 auto 16px}
+  .toggle{background:none;border:0;color:var(--muted);font-size:13px;cursor:pointer;padding:8px;text-decoration:underline}
+
+  /* ── 版面 ── */
+  .top{position:sticky;top:0;z-index:20;background:var(--card);border-bottom:1px solid var(--line);
+       display:flex;align-items:center;gap:14px;padding:10px 18px;flex-wrap:wrap}
+  .top .brand{font-weight:700;color:var(--brand);white-space:nowrap}
+  .top .spacer{flex:1}
+  .top .me{font-size:13px;color:var(--muted);white-space:nowrap}
+  .nav{display:flex;gap:4px;overflow-x:auto;padding:8px 18px 0;background:var(--card);
+       border-bottom:1px solid var(--line);position:sticky;top:53px;z-index:19}
+  .nav button{background:none;border:0;border-bottom:2px solid transparent;color:var(--muted);
+              padding:8px 12px;font:inherit;font-size:14px;cursor:pointer;white-space:nowrap;border-radius:0}
+  .nav button.on{color:var(--brand);border-bottom-color:var(--brand);font-weight:600}
+  main{max-width:1100px;margin:0 auto;padding:22px 18px 60px}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px;margin-bottom:16px}
+  .grid{display:grid;gap:14px}
+  .g2{grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+  .g4{grid-template-columns:repeat(auto-fit,minmax(120px,1fr))}
+  .stats{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(130px,1fr))}
+  .stat{background:var(--soft);border-radius:12px;padding:14px}
+  .stat .n{font-size:26px;font-weight:700;font-variant-numeric:tabular-nums}
+  .stat .l{font-size:12px;color:var(--muted)}
+
+  label{display:block;font-size:13px;color:var(--muted);margin-bottom:4px}
+  input,select,textarea{width:100%;font:inherit;font-size:14px;padding:9px 11px;border-radius:9px;
+        border:1px solid var(--line);background:var(--bg);color:var(--ink)}
+  input:focus,select:focus,textarea:focus{outline:2px solid var(--brand);outline-offset:-1px}
+  textarea{min-height:110px;resize:vertical;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px}
+  .field{margin-bottom:14px}
+
+  button{font:inherit;font-size:14px;border:1px solid var(--line);background:var(--card);color:var(--ink);
+         padding:9px 15px;border-radius:9px;cursor:pointer;transition:opacity .12s}
+  button:hover{opacity:.85} button:disabled{opacity:.45;cursor:not-allowed}
+  button.pri{background:var(--brand);color:#fff;border-color:var(--brand);font-weight:600}
+  button.danger{color:var(--bad);border-color:rgba(214,69,69,.35)}
+  button.sm{padding:5px 10px;font-size:13px}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+
+  .tw{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -20px;padding:0 20px}
+  table{width:100%;border-collapse:collapse;font-size:14px;min-width:560px}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+  th{font-size:12px;color:var(--muted);font-weight:600}
+  tbody tr:hover{background:var(--soft)}
+  td.wrap{white-space:normal}
+
+  .tag{display:inline-block;font-size:12px;padding:2px 8px;border-radius:20px;background:var(--soft);color:var(--muted)}
+  .tag.ok{background:rgba(29,180,70,.14);color:var(--ok)}
+  .tag.bad{background:rgba(214,69,69,.14);color:var(--bad)}
+  .tag.warn{background:rgba(232,163,61,.16);color:var(--warn)}
+
+  .toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(20px);opacity:0;
+         background:var(--ink);color:var(--bg);padding:11px 20px;border-radius:10px;font-size:14px;
+         transition:.22s;pointer-events:none;z-index:100;max-width:90vw;text-align:center}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .toast.bad{background:var(--bad);color:#fff}
+
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;word-break:break-all}
+  .urlbox{background:var(--soft);border-radius:9px;padding:10px 12px;margin-bottom:10px}
+  .urlbox .lb{font-size:12px;color:var(--muted);margin-bottom:3px}
+  .note{font-size:13px;color:var(--muted);line-height:1.7}
+  .empty{text-align:center;color:var(--muted);padding:30px;font-size:14px}
+  .hide{display:none !important}
+</style>
+</head>
+<body>
+
+<!-- ────────── 登入 ────────── -->
+<div class="login" id="loginView">
+  <div class="card">
+    <div class="logo">⏱</div>
+    <h2>打卡系統管理後台</h2>
+    <p class="sub" id="loginHint">請登入</p>
+
+    <button class="pri" id="btnLogin" style="width:100%;padding:12px">登入</button>
+
+    <div id="extraFields" class="hide" style="margin-top:18px;text-align:left">
+      <div class="field">
+        <label>邀請碼(第一次加入請填)</label>
+        <input id="inviteCode" placeholder="例如 K7MQZP2X" autocapitalize="characters">
+      </div>
+      <div class="field">
+        <label>首次啟用碼(只有建立平台時用一次)</label>
+        <input id="setupCode" placeholder="執行 setupPlatform() 後取得" autocapitalize="characters">
+      </div>
+      <button class="pri" id="btnJoin" style="width:100%">送出並登入</button>
+    </div>
+    <button class="toggle" id="btnExtra">我有邀請碼 / 首次啟用</button>
+  </div>
+</div>
+
+<!-- ────────── 主畫面 ────────── -->
+<div id="appView" class="hide">
+  <div class="top">
+    <span class="brand">⏱ 打卡後台</span>
+    <select id="coSelect" style="width:auto;min-width:170px"></select>
+    <span class="spacer"></span>
+    <span class="me" id="meLabel"></span>
+    <button class="sm" id="btnLogout">登出</button>
+  </div>
+
+  <div class="nav" id="nav"></div>
+  <main id="view"></main>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ─────────────────────────────────────────────
+   設定集中在 config.js,這裡不用改
+   ───────────────────────────────────────────── */
+const CFG = window.PUNCH_CONFIG || {};
+const ADMIN_URL = (CFG.GAS_URL || '') + '?p=admin';   // 後台一律直連,不走 Worker
+const ADMIN_PLATFORM = CFG.ADMIN_PLATFORM || 'telegram';
+const ADMIN_LIFF_ID = CFG.ADMIN_LIFF_ID || '';
+const CONFIG_OK = (CFG.GAS_URL || '').indexOf('script.google.com') > 0
+                  && (CFG.GAS_URL || '').indexOf('請貼上') < 0;
+
+let TOKEN = localStorage.getItem('punch_admin_token') || '';
+let ME = null, COMPANIES = [], CO = null, TAB = 'overview';
+let AUTH = null;                                    // {idToken} 或 {initData}
+const tg = window.Telegram && window.Telegram.WebApp;
+
+// ── 提示 ──
+let toastTimer;
+function toast(msg, bad){
+  const t = $('toast');
+  t.textContent = msg;
+  t.className = 'toast show' + (bad ? ' bad' : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>{ t.className='toast'; }, bad ? 4200 : 2200);
+}
+
+// ── API ──
+async function api(action, params){
+  const res = await fetch(ADMIN_URL, {
+    method:'POST',
+    headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body: JSON.stringify(Object.assign({action, token: TOKEN, company: CO}, params||{})),
+    redirect:'follow',
+  });
+  const r = await res.json();
+  if(!r.ok){
+    if(r.code === 'UNAUTHORIZED'){ logout(true); throw new Error(r.message || '請重新登入'); }
+    throw new Error(r.message || '操作失敗');
+  }
+  return r;
+}
+
+// ── 登入流程 ──
+
+/** 取得身分憑證。Telegram 從 WebApp 拿,LINE 走 LIFF。 */
+async function ensureAuth(interactive){
+  if(AUTH) return AUTH;
+
+  if(ADMIN_PLATFORM === 'telegram'){
+    if(!tg || !tg.initData){
+      $('loginHint').textContent = '請從你的 Telegram 管理 bot 開啟後台(輸入框旁的選單按鈕),才能辨識身分。';
+      return null;
+    }
+    tg.ready(); tg.expand();
+    AUTH = { initData: tg.initData };
+    return AUTH;
+  }
+
+  if(!liff.isLoggedIn()){
+    if(interactive) liff.login({ redirectUri: location.href });
+    return null;
+  }
+  const idToken = liff.getIDToken();
+  if(!idToken){
+    $('loginHint').textContent = '取不到 ID Token,請確認 LIFF 已開啟 openid 權限';
+    return null;
+  }
+  AUTH = { idToken: idToken };
+  return AUTH;
+}
+
+async function boot(){
+  if(!CONFIG_OK){
+    $('loginHint').textContent = 'config.js 裡的 GAS_URL 還沒填,請先貼上 Apps Script 的 /exec 網址。';
+    $('btnLogin').disabled = true;
+    return;
+  }
+  $('btnLogin').textContent = ADMIN_PLATFORM === 'telegram' ? '登入' : '使用 LINE 登入';
+
+  if(ADMIN_PLATFORM === 'line'){
+    try{
+      await liff.init({ liffId: ADMIN_LIFF_ID });
+    }catch(e){
+      $('loginHint').textContent = 'LIFF 初始化失敗:' + (e.message || e);
+      $('btnLogin').disabled = true;
+      return;
+    }
+  }
+
+  if(TOKEN){
+    try{
+      ME = (await api('admin.me')).me;
+      return openApp();
+    }catch(e){ TOKEN=''; localStorage.removeItem('punch_admin_token'); }
+  }
+
+  if(await ensureAuth(false)) await tryLogin();
+}
+
+async function tryLogin(extra){
+  try{
+    const r = await api('admin.login', Object.assign({}, AUTH, extra||{}));
+    TOKEN = r.token; ME = r.me;
+    localStorage.setItem('punch_admin_token', TOKEN);
+    openApp();
+  }catch(e){
+    $('loginHint').textContent = e.message;
+    $('extraFields').classList.remove('hide');
+  }
+}
+
+$('btnLogin').addEventListener('click', async ()=>{
+  if(!await ensureAuth(true)) return;
+  await tryLogin();
+});
+
+$('btnExtra').addEventListener('click', ()=> $('extraFields').classList.toggle('hide'));
+
+$('btnJoin').addEventListener('click', async ()=>{
+  if(!await ensureAuth(true)) return;
+  const setup = $('setupCode').value.trim();
+  const invite = $('inviteCode').value.trim();
+  try{
+    if(setup){
+      const r = await api('admin.bootstrap', Object.assign({setupCode: setup}, AUTH));
+      TOKEN = r.token; ME = r.me;
+      localStorage.setItem('punch_admin_token', TOKEN);
+      return openApp();
+    }
+    await tryLogin({inviteCode: invite});
+  }catch(e){ toast(e.message, true); }
+});
+
+function logout(silent){
+  TOKEN=''; ME=null; localStorage.removeItem('punch_admin_token');
+  $('appView').classList.add('hide');
+  $('loginView').classList.remove('hide');
+  if(!silent) toast('已登出');
+}
+$('btnLogout').addEventListener('click', ()=>logout());
+
+// ── 進入後台 ──
+async function openApp(){
+  $('loginView').classList.add('hide');
+  $('appView').classList.remove('hide');
+  $('meLabel').textContent = ME.name + '(' + ME.role + '管理員)';
+
+  const r = await api('company.list');
+  COMPANIES = r.companies;
+
+  const sel = $('coSelect');
+  sel.innerHTML = COMPANIES.map(c=>`<option value="${esc(c.code)}">${esc(c.name)}</option>`).join('');
+  if(COMPANIES.length === 0){
+    sel.innerHTML = '<option value="">(尚未建立公司)</option>';
+    CO = null;
+  }else{
+    CO = COMPANIES[0].code;
+    sel.value = CO;
+  }
+  sel.onchange = ()=>{ CO = sel.value; render(); };
+
+  buildNav();
+  render();
+}
+
+const TABS = [
+  {id:'overview', label:'總覽'},
+  {id:'employees',label:'員工'},
+  {id:'ip',       label:'允許網段'},
+  {id:'settings', label:'出勤設定'},
+  {id:'leaves',   label:'請假審核'},
+  {id:'rules',    label:'守則與假別'},
+  {id:'records',  label:'紀錄與報表'},
+  {id:'bot',      label:'通訊平台'},
+  {id:'members',  label:'管理員'},
+  {id:'platform', label:'平台管理', platformOnly:true},
+];
+
+function buildNav(){
+  const tabs = TABS.filter(t => !t.platformOnly || ME.role === '平台');
+  $('nav').innerHTML = tabs.map(t=>`<button data-tab="${t.id}">${t.label}</button>`).join('');
+  $('nav').querySelectorAll('button').forEach(b=>{
+    b.onclick = ()=>{ TAB = b.dataset.tab; render(); };
+  });
+}
+
+function render(){
+  $('nav').querySelectorAll('button').forEach(b=> b.classList.toggle('on', b.dataset.tab===TAB));
+  const v = $('view');
+  v.innerHTML = '<div class="empty">載入中…</div>';
+
+  if(!CO && TAB !== 'platform'){
+    v.innerHTML = '<div class="card"><div class="empty">還沒有任何公司。' +
+      (ME.role==='平台' ? '請到「平台管理」新增第一家公司。' : '請聯絡平台管理員。') + '</div></div>';
+    return;
+  }
+
+  const fn = ({
+    overview: viewOverview, employees: viewEmployees, ip: viewIp, settings: viewSettings,
+    records: viewRecords, bot: viewBot, members: viewMembers, platform: viewPlatform,
+    leaves: viewLeaves, rules: viewRules,
+  })[TAB];
+  fn(v).catch(e => { v.innerHTML = `<div class="card"><div class="empty">${esc(e.message)}</div></div>`; });
+}
+
+// ══════════════════════ 總覽 ══════════════════════
+async function viewOverview(v){
+  const d = await api('company.overview');
+  v.innerHTML = `
+    <h2>${esc(d.name)}</h2>
+    <p class="sub">公司代碼 ${esc(CO)} · 使用 ${esc(d.platformLabel)}</p>
+    <div class="card">
+      <div class="stats">
+        <div class="stat"><div class="n">${d.active}</div><div class="l">在職員工</div></div>
+        <div class="stat"><div class="n">${d.bound}</div><div class="l">已綁定 LINE</div></div>
+        <div class="stat"><div class="n">${d.todayIn}</div><div class="l">今日上班打卡</div></div>
+        <div class="stat"><div class="n">${d.todayOut}</div><div class="l">今日下班打卡</div></div>
+        <div class="stat"><div class="n">${d.ipRules}</div><div class="l">啟用中網段</div></div>
+      </div>
+    </div>
+    <div class="card">
+      <h3>設定檢查</h3>
+      <table><tbody>
+        <tr><td>${esc(d.platformLabel)} 設定</td><td>${d.botReady?'<span class="tag ok">已完成</span>':'<span class="tag bad">未完成</span>'}</td></tr>
+        <tr><td>打卡頁連結</td><td>${d.punchUrl?`<span class="mono">${esc(d.punchUrl)}</span>`:'<span class="tag bad">尚未產生</span>'}</td></tr>
+        <tr><td>待審核請假</td><td>${d.pendingLeaves?`<span class="tag warn">${d.pendingLeaves} 筆待處理</span>`:'<span class="tag ok">無</span>'}</td></tr>
+        <tr><td>地點(IP)驗證</td><td>${d.ipEnforced?'<span class="tag ok">啟用中</span>':'<span class="tag warn">已關閉</span>'}</td></tr>
+        <tr><td>允許網段</td><td>${d.ipRules>0?`<span class="tag ok">${d.ipRules} 條</span>`:'<span class="tag bad">尚未設定,所有人都打不了卡</span>'}</td></tr>
+        <tr><td>未綁定 LINE 的員工</td><td>${d.active-d.bound>0?`<span class="tag warn">${d.active-d.bound} 人</span>`:'<span class="tag ok">全部完成</span>'}</td></tr>
+      </tbody></table>
+      <div class="row" style="margin-top:14px">
+        <a href="${esc(d.sheetUrl)}" target="_blank" rel="noopener"><button>開啟這家公司的試算表 ↗</button></a>
+      </div>
+    </div>`;
+}
+
+// ══════════════════════ 員工 ══════════════════════
+async function viewEmployees(v){
+  const list = (await api('emp.list')).employees;
+  v.innerHTML = `
+    <h2>員工</h2>
+    <p class="sub">員工需自行在 LINE 輸入「綁定 員工編號」完成綁定,這裡不能代綁。</p>
+
+    <div class="card">
+      <h3>新增 / 修改員工</h3>
+      <div class="grid g2">
+        <div class="field"><label>員工編號 *</label><input id="eCode" placeholder="A001"></div>
+        <div class="field"><label>姓名 *</label><input id="eName" placeholder="王小明"></div>
+        <div class="field"><label>部門</label><input id="eDept" placeholder="業務部"></div>
+        <div class="field"><label>狀態</label>
+          <select id="eStatus"><option>在職</option><option>留職停薪</option><option>離職</option></select></div>
+      </div>
+      <div class="row"><button class="pri" id="eSave">儲存</button>
+        <span class="note">輸入已存在的員工編號會覆蓋該員資料(不影響 LINE 綁定)</span></div>
+    </div>
+
+    <div class="card">
+      <div class="row" style="justify-content:space-between;margin-bottom:12px">
+        <h3 style="margin:0">員工清單(${list.length})</h3>
+        <button class="sm" id="eExport">匯出 CSV</button>
+      </div>
+      <div class="tw">
+        <table>
+          <thead><tr><th>編號</th><th>姓名</th><th>部門</th><th>狀態</th><th>LINE 綁定</th><th>操作</th></tr></thead>
+          <tbody>${list.length ? list.map(e=>`
+            <tr>
+              <td class="mono">${esc(e.code)}</td>
+              <td>${esc(e.name)}</td>
+              <td>${esc(e.dept)||'—'}</td>
+              <td>${e.status==='在職'?'<span class="tag ok">在職</span>':`<span class="tag">${esc(e.status)}</span>`}</td>
+              <td>${e.bound?`<span class="tag ok">${esc(e.lineName)||'已綁定'}</span>`:'<span class="tag bad">未綁定</span>'}</td>
+              <td class="row">
+                <button class="sm" data-edit="${esc(e.code)}">編輯</button>
+                ${e.bound?`<button class="sm" data-unbind="${esc(e.code)}">解除綁定</button>`:''}
+                <button class="sm danger" data-del="${esc(e.code)}">刪除</button>
+              </td>
+            </tr>`).join('') : '<tr><td colspan="6" class="empty">尚無員工</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>批次匯入</h3>
+      <p class="note" style="margin-bottom:10px">每行一位員工,格式:<span class="mono">員工編號,姓名,部門,狀態</span>(部門與狀態可省略)。已存在的編號會被更新。</p>
+      <div class="field"><textarea id="eCsv" placeholder="A001,王小明,業務部&#10;A002,李小華,工程部"></textarea></div>
+      <button class="pri" id="eImport">匯入</button>
+    </div>`;
+
+  $('eSave').onclick = async ()=>{
+    try{
+      await api('emp.save', {employee:{
+        code:$('eCode').value, name:$('eName').value, dept:$('eDept').value, status:$('eStatus').value }});
+      toast('已儲存'); render();
+    }catch(e){ toast(e.message, true); }
+  };
+
+  v.querySelectorAll('[data-edit]').forEach(b=> b.onclick = ()=>{
+    const e = list.find(x=>x.code===b.dataset.edit);
+    $('eCode').value=e.code; $('eName').value=e.name; $('eDept').value=e.dept; $('eStatus').value=e.status;
+    window.scrollTo({top:0,behavior:'smooth'});
+  });
+
+  v.querySelectorAll('[data-unbind]').forEach(b=> b.onclick = async ()=>{
+    if(!confirm(`確定解除 ${b.dataset.unbind} 的 LINE 綁定?\n該員工需要重新輸入「綁定 ${b.dataset.unbind}」才能打卡。`)) return;
+    try{ await api('emp.unbind',{employeeCode:b.dataset.unbind}); toast('已解除綁定'); render(); }
+    catch(e){ toast(e.message, true); }
+  });
+
+  v.querySelectorAll('[data-del]').forEach(b=> b.onclick = async ()=>{
+    if(!confirm(`確定刪除員工 ${b.dataset.del}?\n過去的打卡紀錄會保留,但這個人將無法再打卡。`)) return;
+    try{ await api('emp.delete',{employeeCode:b.dataset.del}); toast('已刪除'); render(); }
+    catch(e){ toast(e.message, true); }
+  });
+
+  $('eImport').onclick = async ()=>{
+    const csv = $('eCsv').value.trim();
+    if(!csv) return toast('請先貼上資料', true);
+    try{
+      const r = await api('emp.import',{csv});
+      toast(`匯入完成:新增/更新 ${r.added} 筆,略過 ${r.skipped} 筆`);
+      render();
+    }catch(e){ toast(e.message, true); }
+  };
+
+  $('eExport').onclick = ()=> downloadCsv('員工_'+CO+'.csv',
+    [['員工編號','姓名','部門','狀態','LINE綁定','綁定時間']].concat(
+      list.map(e=>[e.code,e.name,e.dept,e.status,e.bound?'已綁定':'未綁定',e.boundAt])));
+}
+
+// ══════════════════════ 允許網段 ══════════════════════
+async function viewIp(v){
+  const rules = (await api('ip.list')).rules;
+  v.innerHTML = `
+    <h2>允許網段</h2>
+    <p class="sub">只有從這些對外 IP 連線才能打卡。留空或全部停用會導致所有人都打不了卡。</p>
+
+    <div class="card">
+      <div class="row" style="margin-bottom:14px">
+        <button class="pri sm" id="ipAdd">新增一列</button>
+        <button class="sm" id="ipMine">加入我目前的 IP</button>
+        <span class="note" id="myIp">偵測中…</span>
+      </div>
+      <div class="tw">
+        <table>
+          <thead><tr><th style="min-width:180px">規則</th><th style="min-width:120px">地點名稱</th><th>啟用</th><th style="min-width:150px">說明</th><th></th></tr></thead>
+          <tbody id="ipBody"></tbody>
+        </table>
+      </div>
+      <div class="row" style="margin-top:16px"><button class="pri" id="ipSave">儲存全部</button></div>
+    </div>
+
+    <div class="card">
+      <h3>規則寫法</h3>
+      <table><tbody>
+        <tr><td class="mono">203.0.113.45</td><td class="wrap">單一固定 IP,最常用</td></tr>
+        <tr><td class="mono">203.0.113.0/24</td><td class="wrap">CIDR 網段,涵蓋 203.0.113.0 ~ 203.0.113.255</td></tr>
+        <tr><td class="mono">198.51.100.*</td><td class="wrap">萬用字元,等同 /24</td></tr>
+        <tr><td class="mono">203.0.113.10-203.0.113.20</td><td class="wrap">起訖範圍</td></tr>
+      </tbody></table>
+      <p class="note" style="margin-top:12px">要查公司的對外 IP:用連在公司 Wi-Fi 的裝置開 <a href="https://api.ipify.org" target="_blank" rel="noopener">api.ipify.org</a>,或直接按上面的「加入我目前的 IP」。</p>
+    </div>`;
+
+  const body = $('ipBody');
+  const draw = (rs)=>{
+    body.innerHTML = rs.length ? '' : '<tr><td colspan="5" class="empty">尚未設定任何網段</td></tr>';
+    rs.forEach((r,i)=>{
+      const tr = el(`<tr>
+        <td><input class="mono" data-f="rule" value="${esc(r.rule)}"></td>
+        <td><input data-f="location" value="${esc(r.location)}"></td>
+        <td><input type="checkbox" data-f="enabled" style="width:18px;height:18px" ${r.enabled?'checked':''}></td>
+        <td><input data-f="note" value="${esc(r.note)}"></td>
+        <td><button class="sm danger" data-rm="${i}">刪除</button></td>
+      </tr>`);
+      tr.querySelector('[data-rm]').onclick = ()=>{ collect().then(cur=>{ cur.splice(i,1); draw(cur); }); };
+      body.appendChild(tr);
+    });
+  };
+  const collect = async ()=> Array.from(body.querySelectorAll('tr')).filter(tr=>tr.querySelector('input')).map(tr=>({
+    rule: tr.querySelector('[data-f=rule]').value.trim(),
+    location: tr.querySelector('[data-f=location]').value.trim(),
+    enabled: tr.querySelector('[data-f=enabled]').checked,
+    note: tr.querySelector('[data-f=note]').value.trim(),
+  }));
+
+  draw(rules);
+
+  let myIp = '';
+  fetch('https://api4.ipify.org?format=json').then(r=>r.json())
+    .then(j=>{ myIp=j.ip; $('myIp').textContent = '你目前的對外 IP:' + j.ip; })
+    .catch(()=>{ $('myIp').textContent = '無法偵測你目前的 IP'; });
+
+  $('ipAdd').onclick  = async ()=> draw((await collect()).concat([{rule:'',location:'',enabled:true,note:''}]));
+  $('ipMine').onclick = async ()=>{
+    if(!myIp) return toast('還沒偵測到你的 IP', true);
+    draw((await collect()).concat([{rule:myIp,location:'辦公室',enabled:true,note:'由後台加入'}]));
+  };
+  $('ipSave').onclick = async ()=>{
+    const next = (await collect()).filter(r=>r.rule);
+    if(next.length && !next.some(r=>r.enabled) &&
+       !confirm('沒有任何一條規則是啟用的,所有員工都會打不了卡。確定儲存?')) return;
+    try{ const r = await api('ip.save',{rules: next}); toast(`已儲存 ${r.count} 條規則`); render(); }
+    catch(e){ toast(e.message, true); }
+  };
+}
+
+// ══════════════════════ 出勤設定 ══════════════════════
+async function viewSettings(v){
+  const settings = (await api('setting.list')).settings;
+  v.innerHTML = `
+    <h2>出勤設定</h2>
+    <p class="sub">影響遲到、早退的判定與打卡限制。</p>
+    <div class="card">
+      <div class="grid g2">${settings.map((s,i)=>`
+        <div class="field">
+          <label>${esc(s.key)}</label>
+          ${s.key==='啟用IP驗證'
+            ? `<select data-i="${i}"><option value="TRUE">啟用(只能在公司網路打卡)</option><option value="FALSE">關閉(任何地方都能打卡)</option></select>`
+            : `<input data-i="${i}" value="${esc(fmtVal(s.value))}">`}
+          <div class="note" style="font-size:12px;margin-top:3px">${esc(s.note)}</div>
+        </div>`).join('')}
+      </div>
+      <button class="pri" id="sSave">儲存</button>
+    </div>`;
+
+  settings.forEach((s,i)=>{
+    if(s.key === '啟用IP驗證'){
+      v.querySelector(`select[data-i="${i}"]`).value =
+        String(s.value).toUpperCase()==='TRUE' ? 'TRUE' : 'FALSE';
+    }
+  });
+
+  $('sSave').onclick = async ()=>{
+    const items = settings.map((s,i)=>({
+      key: s.key,
+      value: v.querySelector(`[data-i="${i}"]`).value.trim(),
+    }));
+    try{ await api('setting.save',{items}); toast('已儲存'); render(); }
+    catch(e){ toast(e.message, true); }
+  };
+}
+
+/** 試算表把 09:00 存成 Date 時,序列化回來會是 ISO 字串 */
+function fmtVal(v){
+  if(typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(v)){
+    const d = new Date(v);
+    return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+  }
+  return v;
+}
+
+
+// ══════════════════════ 請假審核 ══════════════════════
+let LV_FILTER = '待審核';
+
+async function viewLeaves(v){
+  const d = await api('leave.list', {status: LV_FILTER === '全部' ? '' : LV_FILTER});
+  const icon = {'待審核':'⏳','已核准':'✅','已駁回':'❌','已取消':'⚪'};
+  const tabs = ['待審核','已核准','已駁回','全部'];
+
+  v.innerHTML = `
+    <h2>請假審核</h2>
+    <p class="sub">目前有 <b>${d.pending}</b> 筆待審核。核准或駁回都會自動通知申請人。</p>
+
+    <div class="card">
+      <div class="row" style="margin-bottom:14px">
+        ${tabs.map(t=>`<button class="sm${t===LV_FILTER?' pri':''}" data-f="${t}">${t}</button>`).join('')}
+      </div>
+      <div class="tw"><table>
+        <thead><tr><th>編號</th><th>申請人</th><th>假別</th><th>期間</th><th>天數</th><th>事由</th><th>狀態</th><th></th></tr></thead>
+        <tbody>${d.leaves.length ? d.leaves.map(l=>`<tr>
+          <td class="mono">${esc(l.id)}</td>
+          <td>${esc(l.name)}<div class="note">${esc(l.employeeCode)}${l.dept?' · '+esc(l.dept):''}</div></td>
+          <td>${esc(l.leaveType)}</td>
+          <td>${esc(l.from===l.to ? l.from : l.from+' ~ '+l.to)}
+              <div class="note">${esc(l.fromHalf==='全天'&&l.toHalf==='全天'?'全天':l.fromHalf+' → '+l.toHalf)}</div></td>
+          <td>${l.days}</td>
+          <td style="max-width:220px">${esc(l.reason)}</td>
+          <td>${icon[l.status]||''} ${esc(l.status)}
+              ${l.approver?`<div class="note">${esc(l.approver)} · ${esc(l.approvedAt)}</div>`:''}</td>
+          <td class="row">${l.status==='待審核'?`
+            <button class="sm pri" data-ok="${esc(l.id)}">同意</button>
+            <button class="sm" data-no="${esc(l.id)}">駁回</button>`:''}</td>
+        </tr>`).join('') : `<tr><td colspan="8" class="empty">沒有${esc(LV_FILTER)}的申請</td></tr>`}</tbody>
+      </table></div>
+    </div>`;
+
+  v.querySelectorAll('[data-f]').forEach(b=> b.onclick = ()=>{ LV_FILTER=b.dataset.f; render(); });
+  v.querySelectorAll('[data-ok]').forEach(b=> b.onclick = ()=>decide(b.dataset.ok, true));
+  v.querySelectorAll('[data-no]').forEach(b=> b.onclick = ()=>decide(b.dataset.no, false));
+}
+
+async function decide(id, approve){
+  const note = approve ? '' : (prompt('駁回原因(會通知申請人,可留空):') || '');
+  if(!approve && note === null) return;
+  try{
+    const r = await api('leave.decide', {leaveId:id, approve, note});
+    toast(r.message);
+    render();
+  }catch(e){ toast(e.message, true); }
+}
+
+// ══════════════════════ 守則與假別 ══════════════════════
+async function viewRules(v){
+  const [r, lt] = await Promise.all([api('rules.list'), api('leavetype.list')]);
+
+  v.innerHTML = `
+    <h2>守則與假別</h2>
+    <p class="sub">員工在聊天室按「📋 工作守則」看到的就是這裡的內容;假別規則會出現在請假申請頁。</p>
+
+    <div class="card">
+      <h3>工作守則</h3>
+      <div id="rWrap"></div>
+      <div class="row" style="margin-top:12px">
+        <button class="sm" id="rAdd">新增一段</button>
+        <button class="pri" id="rSave">儲存守則</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>假別與規則</h3>
+      <p class="note" style="margin-bottom:12px">
+        「需提前天數」設 <b>0</b> 表示可事後補辦。病假、喪假、公傷病假依法不能要求預先申請,請保持 0。
+        留空則套用出勤設定的預設值(目前 ${lt.defaultLead} 天)。
+      </p>
+      <div class="tw"><table>
+        <thead><tr><th>假別</th><th>需提前天數</th><th>年度上限</th><th>給薪比例</th><th>需附證明</th><th>啟用</th><th></th></tr></thead>
+        <tbody id="ltBody"></tbody>
+      </table></div>
+      <div class="row" style="margin-top:12px">
+        <button class="sm" id="ltAdd">新增假別</button>
+        <button class="pri" id="ltSave">儲存假別</button>
+      </div>
+    </div>`;
+
+  // ── 守則 ──
+  const rWrap = $('rWrap');
+  const rRow = (x={order:'',title:'',body:'',enabled:true}) => {
+    const el = document.createElement('div');
+    el.className = 'urlbox'; el.style.marginBottom = '10px';
+    el.innerHTML = `
+      <div class="grid g2" style="margin-bottom:8px">
+        <div class="field" style="margin:0"><label>標題</label><input class="r-title" value="${esc(x.title)}"></div>
+        <div class="field" style="margin:0"><label>排序</label><input class="r-order" type="number" value="${esc(x.order)}"></div>
+      </div>
+      <div class="field" style="margin:0"><label>內容(可換行)</label><textarea class="r-body" style="min-height:88px">${esc(x.body)}</textarea></div>
+      <div class="row" style="margin-top:8px">
+        <label style="display:flex;align-items:center;gap:6px;margin:0;font-size:13px">
+          <input type="checkbox" class="r-en" ${x.enabled?'checked':''} style="width:auto"> 啟用
+        </label>
+        <button class="sm r-del">刪除</button>
+      </div>`;
+    el.querySelector('.r-del').onclick = ()=> el.remove();
+    return el;
+  };
+  (r.rules.length ? r.rules : [{order:1,title:'',body:'',enabled:true}]).forEach(x=> rWrap.appendChild(rRow(x)));
+  $('rAdd').onclick = ()=> rWrap.appendChild(rRow({order:rWrap.children.length+1, title:'', body:'', enabled:true}));
+  $('rSave').onclick = async ()=>{
+    const rules = [...rWrap.children].map((el,i)=>({
+      order: Number(el.querySelector('.r-order').value) || (i+1),
+      title: el.querySelector('.r-title').value.trim(),
+      body:  el.querySelector('.r-body').value,
+      enabled: el.querySelector('.r-en').checked,
+    })).filter(x=>x.title);
+    try{ const res = await api('rules.save',{rules}); toast(`已儲存 ${res.count} 段守則`); }
+    catch(e){ toast(e.message, true); }
+  };
+
+  // ── 假別 ──
+  const ltBody = $('ltBody');
+  const ltRow = (x={name:'',leadDays:'',quota:'',pay:'',proof:'否',enabled:true,note:''}) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><input class="t-name" value="${esc(x.name)}" style="min-width:110px"></td>
+      <td><input class="t-lead" type="number" min="0" value="${esc(x.leadDays)}" style="width:74px"></td>
+      <td><input class="t-quota" value="${esc(x.quota)}" style="width:88px"></td>
+      <td><input class="t-pay" value="${esc(x.pay)}" style="width:74px"></td>
+      <td><input class="t-proof" value="${esc(x.proof)}" style="min-width:120px"></td>
+      <td style="text-align:center"><input type="checkbox" class="t-en" ${x.enabled?'checked':''} style="width:auto"></td>
+      <td><button class="sm t-del">刪除</button></td>`;
+    tr.dataset.note = x.note || '';
+    tr.querySelector('.t-del').onclick = ()=> tr.remove();
+    return tr;
+  };
+  lt.types.forEach(x=> ltBody.appendChild(ltRow(x)));
+  $('ltAdd').onclick = ()=> ltBody.appendChild(ltRow());
+  $('ltSave').onclick = async ()=>{
+    const types = [...ltBody.children].map(tr=>({
+      name: tr.querySelector('.t-name').value.trim(),
+      leadDays: tr.querySelector('.t-lead').value === '' ? '' : Number(tr.querySelector('.t-lead').value),
+      quota: tr.querySelector('.t-quota').value.trim(),
+      pay: tr.querySelector('.t-pay').value.trim(),
+      proof: tr.querySelector('.t-proof').value.trim(),
+      enabled: tr.querySelector('.t-en').checked,
+      note: tr.dataset.note || '',
+    })).filter(x=>x.name);
+    try{ const res = await api('leavetype.save',{types}); toast(`已儲存 ${res.count} 種假別`); }
+    catch(e){ toast(e.message, true); }
+  };
+}
+
+// ══════════════════════ 紀錄與報表 ══════════════════════
+function thisMonth(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
+
+async function viewRecords(v){
+  const ym = thisMonth();
+  v.innerHTML = `
+    <h2>紀錄與報表</h2>
+    <p class="sub">出勤紀錄依法須保存 5 年,請勿刪除試算表裡的資料。</p>
+
+    <div class="card">
+      <h3>月度出勤狀況</h3>
+      <div class="row" style="margin-bottom:14px">
+        <input id="mYm" type="month" value="${ym}" style="width:auto">
+        <button class="sm" id="mLoad">查詢</button>
+        <button class="sm" id="mSend">產生月報並推播給管理員</button>
+      </div>
+      <div id="mBox"><span class="note">載入中…</span></div>
+    </div>
+
+    <div class="card">
+      <h3>打卡紀錄查詢</h3>
+      <div class="row" style="margin-bottom:14px">
+        <input id="qFrom" type="date"> <span class="note">～</span> <input id="qTo" type="date">
+        <input id="qEmp" placeholder="員工編號(可留空)" style="width:auto">
+        <button class="sm pri" id="qGo">查詢</button>
+        <button class="sm" id="qCsv">匯出 CSV</button>
+      </div>
+      <div id="qBox"><span class="note">選好條件後按查詢</span></div>
+    </div>`;
+
+  const loadStats = async ()=>{
+    $('mBox').innerHTML = '<span class="note">載入中…</span>';
+    try{
+      const r = await api('report.stats', {ym: $('mYm').value});
+      const T = r.stats.totals, es = r.stats.employees;
+      const flagged = es.filter(e=>e.late||e.early||e.missingIn||e.missingOut);
+      $('mBox').innerHTML = `
+        <div class="grid g4" style="margin-bottom:16px">
+          <div class="stat"><div class="n">${T.manDays}</div><div class="l">出勤人日</div></div>
+          <div class="stat"><div class="n">${T.hours}</div><div class="l">總工時</div></div>
+          <div class="stat"><div class="n">${T.late+T.early}</div><div class="l">遲到早退</div></div>
+          <div class="stat"><div class="n">${T.missing}</div><div class="l">缺卡次數</div></div>
+        </div>
+        <p class="note" style="margin-bottom:12px">
+          在職 ${T.headcount} 人 · 核准請假 ${T.leaveDays} 天
+          ${T.pendingLeaves?` · <b style="color:var(--warn)">${T.pendingLeaves} 筆請假待審核</b>`:''}
+          ${r.stats.noPunch.length?` · <b style="color:var(--bad)">${r.stats.noPunch.length} 人整月無紀錄</b>`:''}
+        </p>
+        <div class="tw"><table>
+          <thead><tr><th>員工</th><th>出勤</th><th>工時</th><th>遲到</th><th>早退</th><th>缺上班</th><th>缺下班</th><th>請假</th></tr></thead>
+          <tbody>${es.length?es.map(e=>{
+            const bad = e.late||e.early||e.missingIn||e.missingOut;
+            return `<tr${bad?' style="background:rgba(232,163,61,.10)"':''}>
+              <td>${esc(e.name)}<div class="note">${esc(e.code)}${e.dept?' · '+esc(e.dept):''}</div></td>
+              <td>${e.days}</td><td>${e.hours}</td>
+              <td>${e.late||''}</td><td>${e.early||''}</td>
+              <td>${e.missingIn||''}</td><td>${e.missingOut||''}</td>
+              <td>${e.leaveDays||''}</td>
+            </tr>`;}).join(''):'<tr><td colspan="8" class="empty">這個月沒有資料</td></tr>'}</tbody>
+        </table></div>
+        ${flagged.length?'':'<p class="note" style="margin-top:12px">✅ 本月無遲到、早退或缺卡</p>'}`;
+    }catch(e){ $('mBox').innerHTML = `<span class="note" style="color:var(--bad)">${esc(e.message)}</span>`; }
+  };
+
+  $('mLoad').onclick = loadStats;
+  $('mSend').onclick = async ()=>{
+    if(!confirm('會產生月報並推播給這家公司的所有管理員,確定?')) return;
+    try{
+      const r = await api('report.send', {ym: $('mYm').value});
+      toast(r.message);
+    }catch(e){ toast(e.message, true); }
+  };
+  loadStats();
+
+  // ── 打卡紀錄查詢 ──
+  const d = new Date();
+  $('qFrom').value = new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0,10);
+  $('qTo').value = d.toISOString().slice(0,10);
+
+  let LAST = [];
+  const run = async ()=>{
+    $('qBox').innerHTML = '<span class="note">查詢中…</span>';
+    try{
+      const r = await api('record.query', {from:$('qFrom').value, to:$('qTo').value, employeeCode:$('qEmp').value.trim()});
+      LAST = r.records;
+      $('qBox').innerHTML = `
+        <p class="note" style="margin-bottom:10px">共 ${r.records.length} 筆${r.records.length>=1000?'(僅顯示最新 1000 筆)':''}</p>
+        <div class="tw"><table>
+          <thead><tr><th>時間</th><th>員工</th><th>類型</th><th>判定</th><th>地點</th><th>來源IP</th><th>驗證方式</th></tr></thead>
+          <tbody>${r.records.length?r.records.map(x=>`<tr>
+            <td class="mono">${esc(x.datetime)}</td>
+            <td>${esc(x.name)}<div class="note">${esc(x.code)}</div></td>
+            <td>${esc(x.type)}</td>
+            <td>${x.judgement==='正常'?'<span class="tag ok">正常</span>':`<span class="tag warn">${esc(x.judgement)}</span>`}</td>
+            <td>${esc(x.location)}</td>
+            <td class="mono">${esc(x.ip)}</td>
+            <td>${esc(x.device)}</td>
+          </tr>`).join(''):'<tr><td colspan="7" class="empty">查無資料</td></tr>'}</tbody>
+        </table></div>`;
+    }catch(e){ $('qBox').innerHTML = `<span class="note" style="color:var(--bad)">${esc(e.message)}</span>`; }
+  };
+  $('qGo').onclick = run;
+  $('qCsv').onclick = ()=>{
+    if(!LAST.length) return toast('沒有資料可匯出', true);
+    const head = ['時間','員工編號','姓名','部門','類型','判定','地點','來源IP','裝置'];
+    const rows = LAST.map(x=>[x.datetime,x.code,x.name,x.dept,x.type,x.judgement,x.location,x.ip,x.device]);
+    const csv = '\ufeff' + [head].concat(rows).map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
+    a.download = `打卡紀錄_${CO}_${$('qFrom').value}_${$('qTo').value}.csv`;
+    a.click();
+  };
+  run();
+}
+
+// ══════════════════════ 通訊平台 ══════════════════════
+async function viewBot(v){
+  const d = await api('bot.get');
+  const isTg = d.platform === 'telegram';
+
+  v.innerHTML = `
+    <h2>通訊平台 — ${esc(d.platformLabel)}</h2>
+    <p class="sub">這家公司專屬的 bot 憑證。存在後端的指令碼屬性裡,不會寫進試算表。</p>
+
+    <div class="card">
+      ${isTg ? `
+        <div class="field">
+          <label>Telegram Bot Token</label>
+          <input id="bToken" type="password" placeholder="${d.hasToken ? '已設定 — 留空表示不變更' : '123456:ABC-DEF...'}" autocomplete="off">
+          <div class="note" style="font-size:12px;margin-top:3px">
+            向 <a href="https://t.me/BotFather" target="_blank" rel="noopener">@BotFather</a> 傳 /newbot 就能拿到。
+            存檔時會即時驗證。${d.botUsername ? ' 目前:<b>@'+esc(d.botUsername)+'</b>' : ''}
+          </div>
+        </div>
+      ` : `
+        <div class="field">
+          <label>Channel access token(Messaging API,長期權杖)</label>
+          <input id="bToken" type="password" placeholder="${d.hasToken ? '已設定 — 留空表示不變更' : '尚未設定'}" autocomplete="off">
+        </div>
+        <div class="grid g2">
+          <div class="field"><label>LINE Login Channel ID(純數字)</label>
+            <input id="bChannel" value="${esc(d.loginChannelId)}" placeholder="2006123456"></div>
+          <div class="field"><label>LINE Login Channel Secret</label>
+            <input id="bSecret" type="password" placeholder="${d.hasSecret ? '已設定 — 留空表示不變更' : '填了可自動建立 LIFF'}" autocomplete="off"></div>
+          <div class="field"><label>LIFF ID</label>
+            <input id="bLiff" value="${esc(d.liffId)}" placeholder="留空 + 有填 secret = 自動建立"></div>
+        </div>
+      `}
+      <div class="row">
+        <button class="pri" id="bSave">儲存</button>
+        <button id="bSync">重跑自動設定</button>
+        <span class="note">換了打卡頁網址或重新部署後端之後,按「重跑自動設定」把平台端更新回正確網址。</span>
+      </div>
+      <div id="bResult" style="margin-top:14px"></div>
+    </div>
+
+    <div class="card">
+      <h3>相關網址</h3>
+      <div class="urlbox">
+        <div class="lb">Webhook URL${isTg ? '(已自動設定,這裡只是備查)' : ' — 要手動貼到 Messaging API channel'}</div>
+        <div class="mono" id="u1">${esc(d.urls.webhook)}</div>
+        <button class="sm" style="margin-top:8px" data-copy="u1">複製</button>
+      </div>
+      <div class="urlbox">
+        <div class="lb">${isTg ? 'WebApp URL(已自動設為選單按鈕)' : 'LIFF Endpoint URL'}</div>
+        <div class="mono" id="u2">${esc(d.urls.page)}</div>
+        <button class="sm" style="margin-top:8px" data-copy="u2">複製</button>
+      </div>
+      <div class="urlbox">
+        <div class="lb">員工實際點的打卡連結${isTg ? '' : '(圖文選單就填這個)'}</div>
+        <div class="mono" id="u3">${esc(d.urls.entry)}</div>
+        <button class="sm" style="margin-top:8px" data-copy="u3">複製</button>
+      </div>
+    </div>`;
+
+  v.querySelectorAll('[data-copy]').forEach(b=> b.onclick = ()=>{
+    navigator.clipboard.writeText($(b.dataset.copy).textContent).then(()=>toast('已複製'), ()=>toast('複製失敗', true));
+  });
+
+  $('bSave').onclick = async ()=>{
+    const p = { platform: d.platform };
+    if(isTg) p.botToken = $('bToken').value.trim();
+    else Object.assign(p, {
+      channelAccessToken: $('bToken').value.trim(),
+      loginChannelId: $('bChannel').value.trim(),
+      loginChannelSecret: $('bSecret').value.trim(),
+      liffId: $('bLiff').value.trim(),
+    });
+    try{
+      const r = await api('bot.save', p);
+      toast(r.botLabel ? `已儲存:${r.botLabel}` : '已儲存');
+      render();
+    }catch(e){ toast(e.message, true); }
+  };
+
+  $('bSync').onclick = async ()=>{
+    $('bResult').innerHTML = '<span class="note">處理中…</span>';
+    try{
+      const r = await api('bot.resync');
+      $('bResult').innerHTML = renderSetupResult(r);
+    }catch(e){ $('bResult').innerHTML = ''; toast(e.message, true); }
+  };
+}
+
+/** 自動設定的結果:做完了什麼、還剩什麼要手動 */
+function renderSetupResult(r){
+  const done = (r.done||[]).map(x=>`<div>✅ ${esc(x)}</div>`).join('');
+  const manual = (r.manual||[]).map(x=>`<div>⚠️ ${esc(x)}</div>`).join('');
+  if(!done && !manual) return '<span class="note">沒有需要處理的項目</span>';
+  return `<div class="urlbox" style="line-height:1.9">${done}${manual}</div>`;
+}
+
+// ══════════════════════ 管理員 ══════════════════════
+async function viewMembers(v){
+  const admins = (await api('admin.list')).admins;
+  const invites = (await api('invite.list')).invites;
+  const isPlatform = ME.role === '平台';
+
+  v.innerHTML = `
+    <h2>管理員</h2>
+    <p class="sub">管理員用 LINE 帳號登入後台。新成員需要一組邀請碼,在登入畫面輸入即可加入。</p>
+
+    <div class="card">
+      <h3>產生邀請碼</h3>
+      <div class="row">
+        ${isPlatform ? `<select id="iRole" style="width:auto">
+          <option value="公司">公司管理員(只能管目前選的公司)</option>
+          <option value="平台">平台管理員(可管所有公司)</option>
+        </select>` : ''}
+        <select id="iDays" style="width:auto"><option value="7">7 天後過期</option><option value="1">1 天後過期</option><option value="30">30 天後過期</option></select>
+        <button class="pri" id="iGo">產生</button>
+      </div>
+      <div id="iResult" style="margin-top:14px"></div>
+    </div>
+
+    <div class="card">
+      <h3>目前的管理員(${admins.length})</h3>
+      <div class="tw"><table>
+        <thead><tr><th>姓名</th><th>角色</th><th>公司</th><th>狀態</th>${isPlatform?'<th></th>':''}</tr></thead>
+        <tbody>${admins.map(a=>`<tr>
+          <td>${esc(a.name)||'(未命名)'}</td>
+          <td>${a.role==='平台'?'<span class="tag warn">平台</span>':'<span class="tag">公司</span>'}</td>
+          <td class="mono">${esc(a.companyCode)||'—'}</td>
+          <td>${a.status==='啟用'?'<span class="tag ok">啟用</span>':'<span class="tag bad">停用</span>'}</td>
+          ${isPlatform?`<td>${a.userId===ME.userId?'<span class="note">你自己</span>':`<button class="sm danger" data-rm="${esc(a.userId)}">移除</button>`}</td>`:''}
+        </tr>`).join('')}</tbody>
+      </table></div>
+    </div>
+
+    <div class="card">
+      <h3>最近的邀請碼</h3>
+      <div class="tw"><table>
+        <thead><tr><th>邀請碼</th><th>角色</th><th>公司</th><th>到期</th><th>狀態</th></tr></thead>
+        <tbody>${invites.length?invites.map(i=>`<tr>
+          <td class="mono">${esc(i.code)}</td><td>${esc(i.role)}</td><td class="mono">${esc(i.companyCode)||'—'}</td>
+          <td>${esc(i.expiresAt)}</td>
+          <td>${i.used?`<span class="tag">已使用 ${esc(i.usedBy)}</span>`:'<span class="tag ok">可用</span>'}</td>
+        </tr>`).join(''):'<tr><td colspan="5" class="empty">還沒有產生過邀請碼</td></tr>'}</tbody>
+      </table></div>
+    </div>`;
+
+  $('iGo').onclick = async ()=>{
+    try{
+      const r = await api('invite.create',{
+        role: isPlatform ? $('iRole').value : '公司',
+        days: $('iDays').value,
+      });
+      $('iResult').innerHTML = `<div class="urlbox">
+        <div class="lb">把這組邀請碼給對方,請他在後台登入畫面點「我有邀請碼」輸入</div>
+        <div class="mono" style="font-size:22px;letter-spacing:.12em;font-weight:700" id="iCode">${esc(r.invite.code)}</div>
+        <button class="sm" style="margin-top:8px" id="iCopy">複製</button>
+      </div>`;
+      $('iCopy').onclick = ()=> navigator.clipboard.writeText(r.invite.code).then(()=>toast('已複製'));
+      api('invite.list').then(()=>{});
+    }catch(e){ toast(e.message, true); }
+  };
+
+  v.querySelectorAll('[data-rm]').forEach(b=> b.onclick = async ()=>{
+    if(!confirm('確定移除這位管理員?')) return;
+    try{ await api('admin.remove',{userId:b.dataset.rm}); toast('已移除'); render(); }
+    catch(e){ toast(e.message, true); }
+  });
+}
+
+// ══════════════════════ 平台管理 ══════════════════════
+async function viewPlatform(v){
+  const p = await api('platform.get');
+  const list = (await api('company.list')).companies;
+
+  v.innerHTML = `
+    <h2>平台管理</h2>
+    <p class="sub">只有平台管理員看得到這一頁。</p>
+
+    <div class="card">
+      <h3>新增公司</h3>
+      <p class="note" style="margin-bottom:16px">填完送出,系統會自動建立試算表、寫入設定,並盡可能把平台端(webhook、選單按鈕、LIFF)設定好。</p>
+
+      <div class="grid g2">
+        <div class="field"><label>公司名稱 *</label><input id="cName" placeholder="宏達股份有限公司"></div>
+        <div class="field"><label>公司代碼(留空=自動編號)</label><input id="cCode" placeholder="留空即可" autocapitalize="characters"></div>
+      </div>
+
+      <div class="field">
+        <label>公司對外 IP *(多個請用逗號或換行分隔)</label>
+        <textarea id="cIps" style="min-height:70px" placeholder="203.0.113.45&#10;198.51.100.0/24"></textarea>
+        <div class="row" style="margin-top:8px">
+          <button class="sm" id="cMyIp">帶入我目前的 IP</button>
+          <span class="note" id="cMyIpLabel">偵測中…</span>
+        </div>
+      </div>
+
+      <div class="grid g2">
+        <div class="field"><label>上班時間</label><input id="cStart" type="time" value="09:00"></div>
+        <div class="field"><label>下班時間</label><input id="cEnd" type="time" value="18:00"></div>
+      </div>
+
+      <div class="field">
+        <label>通訊平台 *</label>
+        <select id="cPlatform">
+          <option value="telegram">Telegram — 只要一個 token,webhook 與選單全自動</option>
+          <option value="line">LINE — 需要三個值,webhook 要手動貼</option>
+        </select>
+      </div>
+
+      <div id="cTg">
+        <div class="field">
+          <label>Telegram Bot Token *</label>
+          <input id="cBotToken" type="password" placeholder="123456789:AAH..." autocomplete="off">
+          <div class="note" style="font-size:12px;margin-top:3px">
+            在 Telegram 找 <a href="https://t.me/BotFather" target="_blank" rel="noopener">@BotFather</a> → 傳 <span class="mono">/newbot</span> → 取名字 → 它會回一串 token,整串貼進來。
+          </div>
+        </div>
+      </div>
+
+      <div id="cLine" class="hide">
+        <div class="field">
+          <label>Channel access token *(Messaging API 的長期權杖)</label>
+          <input id="cLineToken" type="password" autocomplete="off">
+        </div>
+        <div class="grid g2">
+          <div class="field"><label>LINE Login Channel ID *</label><input id="cLoginId" placeholder="2006123456"></div>
+          <div class="field"><label>LINE Login Channel Secret</label>
+            <input id="cLoginSecret" type="password" placeholder="填了就自動幫你建 LIFF" autocomplete="off"></div>
+          <div class="field"><label>LIFF ID(已自己建好才填)</label><input id="cLiff" placeholder="留空 = 自動建立"></div>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>員工名冊(選填,每行:編號,姓名,部門)</label>
+        <textarea id="cEmps" placeholder="A001,王小明,業務部&#10;A002,李小華,工程部"></textarea>
+      </div>
+
+      <button class="pri" id="cGo" style="padding:12px 24px">建立公司</button>
+      <div id="cResult" style="margin-top:14px"></div>
+    </div>
+
+    <div class="card">
+      <h3>公司清單(${list.length})</h3>
+      <div class="tw"><table>
+        <thead><tr><th>代碼</th><th>名稱</th><th>平台</th><th>狀態</th><th>設定</th><th>建立日</th><th></th></tr></thead>
+        <tbody>${list.length?list.map(c=>`<tr>
+          <td class="mono">${esc(c.code)}</td><td>${esc(c.name)}</td>
+          <td>${esc(c.platformLabel)}</td>
+          <td>${c.status==='啟用'?'<span class="tag ok">啟用</span>':'<span class="tag bad">停用</span>'}</td>
+          <td>${c.ready?'<span class="tag ok">完成</span>':'<span class="tag bad">未完成</span>'}</td>
+          <td>${esc(c.createdAt)}</td>
+          <td class="row">
+            <a href="${esc(c.sheetUrl)}" target="_blank" rel="noopener"><button class="sm">試算表 ↗</button></a>
+            <button class="sm" data-toggle="${esc(c.code)}" data-status="${esc(c.status)}">${c.status==='啟用'?'停用':'啟用'}</button>
+          </td>
+        </tr>`).join(''):'<tr><td colspan="7" class="empty">還沒有建立任何公司</td></tr>'}</tbody>
+      </table></div>
+    </div>
+
+    <div class="card">
+      <h3>平台設定</h3>
+      <div class="field">
+        <label>打卡頁網址(GitHub Pages 的資料夾網址,不含檔名)</label>
+        <input id="pBase" value="${esc(p.pageBaseUrl)}" placeholder="https://你的帳號.github.io/punch">
+        <div class="note" style="font-size:12px;margin-top:3px">用來自動組出每家公司的 LIFF Endpoint URL。</div>
+      </div>
+      <div class="field">
+        <label>後台登入驗證平台</label>
+        <select id="pAdminPlatform">
+          <option value="">自動(沿用第一家設定完成的公司)</option>
+          <option value="telegram">Telegram</option>
+          <option value="line">LINE</option>
+        </select>
+        <div class="note" style="font-size:12px;margin-top:3px">
+          目前實際使用:<b>${esc(p.adminPlatformEffective || '(尚未設定)')}</b>。
+          這裡改完,記得同步修改 admin.html 最上面的 <span class="mono">ADMIN_PLATFORM</span>。
+        </div>
+      </div>
+      <div class="grid g2">
+        <div class="field"><label>後台專用 Telegram Bot Token</label>
+          <input id="pAdminBot" type="password" placeholder="${p.adminHasBotToken?'已設定 — 留空表示不變更':'留空 = 沿用公司的 bot'}" autocomplete="off"></div>
+        <div class="field"><label>後台專用 LINE Login Channel ID</label>
+          <input id="pAdminCh" value="${esc(p.adminLoginChannelId)}" placeholder="留空 = 沿用公司的 channel"></div>
+      </div>
+      <button class="pri" id="pSave">儲存</button>
+      <div class="urlbox" style="margin-top:16px">
+        <div class="lb">Web App 網址(後端)</div>
+        <div class="mono">${esc(p.webAppUrl || '(取不到,請確認已部署為網頁應用程式)')}</div>
+      </div>
+    </div>`;
+
+  const syncPlatformFields = ()=>{
+    const tgSel = $('cPlatform').value === 'telegram';
+    $('cTg').classList.toggle('hide', !tgSel);
+    $('cLine').classList.toggle('hide', tgSel);
+  };
+  $('cPlatform').onchange = syncPlatformFields;
+  syncPlatformFields();
+
+  let myIp = '';
+  fetch('https://api4.ipify.org?format=json').then(r=>r.json())
+    .then(j=>{ myIp=j.ip; $('cMyIpLabel').textContent = '你目前的對外 IP:'+j.ip; })
+    .catch(()=>{ $('cMyIpLabel').textContent = '無法偵測你目前的 IP'; });
+  $('cMyIp').onclick = ()=>{
+    if(!myIp) return toast('還沒偵測到你的 IP', true);
+    const cur = $('cIps').value.trim();
+    $('cIps').value = cur ? cur+'\n'+myIp : myIp;
+  };
+
+  $('cGo').onclick = async ()=>{
+    const btn = $('cGo');
+    const platform = $('cPlatform').value;
+    const payload = {
+      name: $('cName').value.trim(),
+      code: $('cCode').value.trim(),
+      platform: platform,
+      ips: $('cIps').value.split(/[\n,、]/).map(s=>s.trim()).filter(Boolean),
+      workStart: $('cStart').value,
+      workEnd: $('cEnd').value,
+      employeesCsv: $('cEmps').value.trim(),
+    };
+    if(platform === 'telegram'){
+      payload.botToken = $('cBotToken').value.trim();
+    }else{
+      Object.assign(payload, {
+        channelAccessToken: $('cLineToken').value.trim(),
+        loginChannelId: $('cLoginId').value.trim(),
+        loginChannelSecret: $('cLoginSecret').value.trim(),
+        liffId: $('cLiff').value.trim(),
+      });
+    }
+
+    btn.disabled = true; btn.textContent = '建立中…';
+    $('cResult').innerHTML = '<span class="note">正在驗證憑證、建立試算表、設定平台…</span>';
+    try{
+      const r = await api('company.provision', payload);
+      const c = r.company;
+      $('cResult').innerHTML = `
+        <div class="urlbox">
+          <div class="lb">已建立</div>
+          <div style="font-size:17px;font-weight:600;margin-bottom:6px">${esc(c.name)}(${esc(c.code)})</div>
+          <div class="note">${esc(c.platformLabel)}${c.botLabel?' · '+esc(c.botLabel):''} · 網段 ${c.ipCount} 條${c.imported?' · 員工 '+c.imported+' 人':''}</div>
+          <div style="margin-top:8px"><a href="${esc(c.sheetUrl)}" target="_blank" rel="noopener">開啟它的試算表 ↗</a></div>
+        </div>
+        ${renderSetupResult(r)}
+        <div class="urlbox">
+          <div class="lb">員工打卡連結</div>
+          <div class="mono" id="pvEntry">${esc(r.urls.entry)}</div>
+          <button class="sm" style="margin-top:8px" id="pvCopy">複製</button>
+        </div>`;
+      $('pvCopy').onclick = ()=> navigator.clipboard.writeText($('pvEntry').textContent).then(()=>toast('已複製'));
+      toast('公司已建立');
+
+      COMPANIES = (await api('company.list')).companies;
+      $('coSelect').innerHTML = COMPANIES.map(x=>`<option value="${esc(x.code)}">${esc(x.name)}</option>`).join('');
+      CO = c.code;
+      $('coSelect').value = CO;
+      ['cName','cCode','cIps','cBotToken','cLineToken','cLoginId','cLoginSecret','cLiff','cEmps']
+        .forEach(id=>{ if($(id)) $(id).value=''; });
+    }catch(e){
+      $('cResult').innerHTML = '';
+      toast(e.message, true);
+    }finally{
+      btn.disabled = false; btn.textContent = '建立公司';
+    }
+  };
+
+  v.querySelectorAll('[data-toggle]').forEach(b=> b.onclick = async ()=>{
+    const next = b.dataset.status === '啟用' ? '停用' : '啟用';
+    if(!confirm(`確定把這家公司改為「${next}」?停用後員工將無法打卡。`)) return;
+    try{ await api('company.update',{code:b.dataset.toggle, status:next}); toast('已更新'); render(); }
+    catch(e){ toast(e.message, true); }
+  });
+
+  $('pAdminPlatform').value = p.adminPlatform || '';
+
+  $('pSave').onclick = async ()=>{
+    try{
+      await api('platform.save',{
+        pageBaseUrl: $('pBase').value.trim(),
+        adminPlatform: $('pAdminPlatform').value,
+        adminLoginChannelId: $('pAdminCh').value.trim(),
+        adminBotToken: $('pAdminBot').value.trim(),
+      });
+      toast('已儲存');
+      render();
+    }catch(e){ toast(e.message, true); }
+  };
+}
+
+// ══════════════════════ 工具 ══════════════════════
+function downloadCsv(filename, rows){
+  const csv = rows.map(r => r.map(c => {
+    const s = String(c==null?'':c);
+    return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s;
+  }).join(',')).join('\r\n');
+  const blob = new Blob(['﻿'+csv], {type:'text/csv;charset=utf-8'});   // BOM 讓 Excel 正確辨識中文
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 1000);
+}
+
+boot();
+</script>
+</body>
+</html>
