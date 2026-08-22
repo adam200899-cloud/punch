@@ -361,6 +361,7 @@ async function viewOverview(v){
       <table><tbody>
         <tr><td>${esc(d.platformLabel)} 設定</td><td>${d.botReady?'<span class="tag ok">已完成</span>':'<span class="tag bad">未完成</span>'}</td></tr>
         <tr><td>打卡頁連結</td><td>${d.punchUrl?`<span class="mono">${esc(d.punchUrl)}</span>`:'<span class="tag bad">尚未產生</span>'}</td></tr>
+        <tr><td>待設定員工</td><td>${d.pendingEmployees?`<span class="tag warn">${d.pendingEmployees} 人等你設定</span>`:'<span class="tag ok">無</span>'}</td></tr>
         <tr><td>待審核請假</td><td>${d.pendingLeaves?`<span class="tag warn">${d.pendingLeaves} 筆待處理</span>`:'<span class="tag ok">無</span>'}</td></tr>
         <tr><td>地點(IP)驗證</td><td>${d.ipEnforced?'<span class="tag ok">啟用中</span>':'<span class="tag warn">已關閉</span>'}</td></tr>
         <tr><td>允許網段</td><td>${d.ipRules>0?`<span class="tag ok">${d.ipRules} 條</span>`:'<span class="tag bad">尚未設定,所有人都打不了卡</span>'}</td></tr>
@@ -374,96 +375,138 @@ async function viewOverview(v){
 
 // ══════════════════════ 員工 ══════════════════════
 async function viewEmployees(v){
-  const list = (await api('emp.list')).employees;
+  const d = await api('emp.list');
+  const pending = d.employees.filter(e=>e.pending);
+  const active  = d.employees.filter(e=>!e.pending);
+
   v.innerHTML = `
     <h2>員工</h2>
-    <p class="sub">員工需自行在 LINE 輸入「綁定 員工編號」完成綁定,這裡不能代綁。</p>
+    <p class="sub">員工在聊天室輸入「綁定」兩個字之後會出現在這裡,由你填上他是誰。</p>
+
+    ${pending.length ? `
+    <div class="card" style="border:1px solid var(--warn)">
+      <h3>⏳ 待設定(${pending.length})</h3>
+      <p class="note" style="margin-bottom:14px">
+        這些人已經綁定 Telegram,但還沒有身分資料,<b>還不能打卡</b>。
+        對照「Telegram 暱稱」確認是誰,填上編號與姓名後按「設定」。
+      </p>
+      <div class="tw"><table>
+        <thead><tr><th>Telegram 暱稱</th><th>綁定時間</th><th>員工編號 *</th><th>姓名 *</th><th>部門</th><th></th></tr></thead>
+        <tbody>${pending.map(e=>`<tr data-uid="${esc(e.userId)}">
+          <td><b>${esc(e.lineName || '(沒有設定名稱)')}</b></td>
+          <td class="note">${esc(e.boundAt)}</td>
+          <td><input class="a-code" placeholder="A001" style="width:96px"></td>
+          <td><input class="a-name" placeholder="姓名" style="width:110px"></td>
+          <td><input class="a-dept" placeholder="部門" style="width:110px"></td>
+          <td class="row">
+            <button class="sm pri a-go">設定</button>
+            <button class="sm a-del">刪除</button>
+          </td>
+        </tr>`).join('')}</tbody>
+      </table></div>
+    </div>` : ''}
 
     <div class="card">
-      <h3>新增 / 修改員工</h3>
+      <h3>新增 / 修改</h3>
+      <p class="note" style="margin-bottom:12px">先建好資料也可以 —— 員工改用「綁定 員工編號」就能自己對上。</p>
       <div class="grid g2">
         <div class="field"><label>員工編號 *</label><input id="eCode" placeholder="A001"></div>
-        <div class="field"><label>姓名 *</label><input id="eName" placeholder="王小明"></div>
-        <div class="field"><label>部門</label><input id="eDept" placeholder="業務部"></div>
+        <div class="field"><label>姓名 *</label><input id="eName"></div>
+        <div class="field"><label>部門</label><input id="eDept"></div>
         <div class="field"><label>狀態</label>
-          <select id="eStatus"><option>在職</option><option>留職停薪</option><option>離職</option></select></div>
+          <select id="eStatus"><option>在職</option><option>離職</option></select></div>
       </div>
-      <div class="row"><button class="pri" id="eSave">儲存</button>
-        <span class="note">輸入已存在的員工編號會覆蓋該員資料(不影響 LINE 綁定)</span></div>
+      <button class="pri" id="eSave">儲存</button>
     </div>
 
     <div class="card">
-      <div class="row" style="justify-content:space-between;margin-bottom:12px">
-        <h3 style="margin:0">員工清單(${list.length})</h3>
+      <h3>名冊(${active.length})</h3>
+      <div class="row" style="margin-bottom:12px">
+        <button class="sm" id="eImport">批次匯入</button>
         <button class="sm" id="eExport">匯出 CSV</button>
       </div>
-      <div class="tw">
-        <table>
-          <thead><tr><th>編號</th><th>姓名</th><th>部門</th><th>狀態</th><th>LINE 綁定</th><th>操作</th></tr></thead>
-          <tbody>${list.length ? list.map(e=>`
-            <tr>
-              <td class="mono">${esc(e.code)}</td>
-              <td>${esc(e.name)}</td>
-              <td>${esc(e.dept)||'—'}</td>
-              <td>${e.status==='在職'?'<span class="tag ok">在職</span>':`<span class="tag">${esc(e.status)}</span>`}</td>
-              <td>${e.bound?`<span class="tag ok">${esc(e.lineName)||'已綁定'}</span>`:'<span class="tag bad">未綁定</span>'}</td>
-              <td class="row">
-                <button class="sm" data-edit="${esc(e.code)}">編輯</button>
-                ${e.bound?`<button class="sm" data-unbind="${esc(e.code)}">解除綁定</button>`:''}
-                <button class="sm danger" data-del="${esc(e.code)}">刪除</button>
-              </td>
-            </tr>`).join('') : '<tr><td colspan="6" class="empty">尚無員工</td></tr>'}
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <div class="card">
-      <h3>批次匯入</h3>
-      <p class="note" style="margin-bottom:10px">每行一位員工,格式:<span class="mono">員工編號,姓名,部門,狀態</span>(部門與狀態可省略)。已存在的編號會被更新。</p>
-      <div class="field"><textarea id="eCsv" placeholder="A001,王小明,業務部&#10;A002,李小華,工程部"></textarea></div>
-      <button class="pri" id="eImport">匯入</button>
+      <div class="tw"><table>
+        <thead><tr><th>編號</th><th>姓名</th><th>部門</th><th>狀態</th><th>綁定</th><th>Telegram 暱稱</th><th></th></tr></thead>
+        <tbody>${active.length?active.map(e=>`<tr>
+          <td class="mono">${esc(e.code)}</td><td>${esc(e.name)}</td><td>${esc(e.dept)}</td>
+          <td>${e.status==='在職'?'<span class="tag ok">在職</span>':`<span class="tag bad">${esc(e.status)}</span>`}</td>
+          <td>${e.bound?`<span class="tag ok">已綁定</span><div class="note">${esc(e.boundAt)}</div>`:'<span class="tag warn">未綁定</span>'}</td>
+          <td>${esc(e.lineName||'—')}</td>
+          <td class="row">
+            <button class="sm" data-edit="${esc(e.code)}">編輯</button>
+            ${e.bound?`<button class="sm" data-unbind="${esc(e.code)}">解除綁定</button>`:''}
+            <button class="sm" data-del="${esc(e.code)}">刪除</button>
+          </td>
+        </tr>`).join(''):'<tr><td colspan="7" class="empty">還沒有員工</td></tr>'}</tbody>
+      </table></div>
     </div>`;
 
+  // ── 待設定:填完按「設定」 ──
+  v.querySelectorAll('tr[data-uid]').forEach(tr=>{
+    const uid = tr.dataset.uid;
+    tr.querySelector('.a-go').onclick = async ()=>{
+      const employee = {
+        code: tr.querySelector('.a-code').value.trim(),
+        name: tr.querySelector('.a-name').value.trim(),
+        dept: tr.querySelector('.a-dept').value.trim(),
+        status: '在職',
+      };
+      if(!employee.code || !employee.name) return toast('員工編號與姓名都要填', true);
+      try{
+        const r = await api('emp.assign', {userId: uid, employee});
+        toast(r.message + ',已通知他可以開始打卡');
+        render();
+      }catch(e){ toast(e.message, true); }
+    };
+    tr.querySelector('.a-del').onclick = async ()=>{
+      if(!confirm('刪除這筆綁定?對方要重新輸入「綁定」才會再出現。')) return;
+      try{
+        const r = await api('emp.deletePending', {userId: uid});
+        toast(r.message); render();
+      }catch(e){ toast(e.message, true); }
+    };
+  });
+
+  // ── 新增 / 修改 ──
   $('eSave').onclick = async ()=>{
     try{
-      await api('emp.save', {employee:{
-        code:$('eCode').value, name:$('eName').value, dept:$('eDept').value, status:$('eStatus').value }});
+      await api('emp.save',{employee:{
+        code:$('eCode').value.trim(), name:$('eName').value.trim(),
+        dept:$('eDept').value.trim(), status:$('eStatus').value }});
       toast('已儲存'); render();
     }catch(e){ toast(e.message, true); }
   };
 
   v.querySelectorAll('[data-edit]').forEach(b=> b.onclick = ()=>{
-    const e = list.find(x=>x.code===b.dataset.edit);
+    const e = active.find(x=>x.code===b.dataset.edit);
     $('eCode').value=e.code; $('eName').value=e.name; $('eDept').value=e.dept; $('eStatus').value=e.status;
-    window.scrollTo({top:0,behavior:'smooth'});
+    $('eCode').scrollIntoView({block:'center'});
   });
-
   v.querySelectorAll('[data-unbind]').forEach(b=> b.onclick = async ()=>{
-    if(!confirm(`確定解除 ${b.dataset.unbind} 的 LINE 綁定?\n該員工需要重新輸入「綁定 ${b.dataset.unbind}」才能打卡。`)) return;
-    try{ await api('emp.unbind',{employeeCode:b.dataset.unbind}); toast('已解除綁定'); render(); }
+    if(!confirm(`解除 ${b.dataset.unbind} 的綁定?他要重新輸入「綁定」。`)) return;
+    try{ await api('emp.unbind',{employeeCode:b.dataset.unbind}); toast('已解除'); render(); }
     catch(e){ toast(e.message, true); }
   });
-
   v.querySelectorAll('[data-del]').forEach(b=> b.onclick = async ()=>{
-    if(!confirm(`確定刪除員工 ${b.dataset.del}?\n過去的打卡紀錄會保留,但這個人將無法再打卡。`)) return;
+    if(!confirm(`刪除 ${b.dataset.del}?打卡紀錄會保留。`)) return;
     try{ await api('emp.delete',{employeeCode:b.dataset.del}); toast('已刪除'); render(); }
     catch(e){ toast(e.message, true); }
   });
 
   $('eImport').onclick = async ()=>{
-    const csv = $('eCsv').value.trim();
-    if(!csv) return toast('請先貼上資料', true);
-    try{
-      const r = await api('emp.import',{csv});
-      toast(`匯入完成:新增/更新 ${r.added} 筆,略過 ${r.skipped} 筆`);
-      render();
-    }catch(e){ toast(e.message, true); }
+    const csv = prompt('每行一位,格式:員工編號,姓名,部門\n\nA001,王小明,業務部');
+    if(!csv) return;
+    try{ const r = await api('emp.import',{csv}); toast(`匯入 ${r.added} 筆,略過 ${r.skipped} 筆`); render(); }
+    catch(e){ toast(e.message, true); }
   };
-
-  $('eExport').onclick = ()=> downloadCsv('員工_'+CO+'.csv',
-    [['員工編號','姓名','部門','狀態','LINE綁定','綁定時間']].concat(
-      list.map(e=>[e.code,e.name,e.dept,e.status,e.bound?'已綁定':'未綁定',e.boundAt])));
+  $('eExport').onclick = ()=>{
+    const head=['員工編號','姓名','部門','狀態','已綁定','Telegram暱稱','綁定時間'];
+    const rows=active.map(e=>[e.code,e.name,e.dept,e.status,e.bound?'是':'否',e.lineName,e.boundAt]);
+    const csv='\ufeff'+[head].concat(rows).map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
+    a.download=`員工名冊_${CO}.csv`; a.click();
+  };
 }
 
 // ══════════════════════ 允許網段 ══════════════════════
@@ -1115,7 +1158,7 @@ async function viewPlatform(v){
       <h3>平台設定</h3>
       <div class="field">
         <label>打卡頁網址(GitHub Pages 的資料夾網址,不含檔名)</label>
-        <input id="pBase" value="${esc(p.pageBaseUrl)}" placeholder="https://你的帳號.github.io/punch">
+        <input id="pBase" value="${esc(p.pageBaseUrl)}" placeholder="https://adam200899-cloud.github.io/punch">
         <div class="note" style="font-size:12px;margin-top:3px">用來自動組出每家公司的 LIFF Endpoint URL。</div>
       </div>
       <div class="field">
