@@ -71,6 +71,7 @@ const SHEETS = {
   LEAVE:     '請假申請',
   LEAVETYPE: '假別',
   RULES:     '工作守則',
+  GREETING:  '問候語',
 };
 
 const HEADERS = {
@@ -83,6 +84,7 @@ const HEADERS = {
                       '狀態', '審核人', '審核時間', '審核備註'],
   [SHEETS.LEAVETYPE]:['假別', '需提前天數', '年度上限', '給薪比例', '需附證明', '啟用', '法源與說明'],
   [SHEETS.RULES]:    ['排序', '標題', '內容', '啟用'],
+  [SHEETS.GREETING]: ['情境', '內容', '啟用'],
 };
 
 const DEFAULT_SETTINGS = [
@@ -94,6 +96,337 @@ const DEFAULT_SETTINGS = [
   ['啟用IP驗證',   'TRUE',  'FALSE 可暫時關閉地點限制(測試用)'],
   ['預設提前天數', 3,       '沒有特別指定的假別,要提前幾天申請'],
   ['請假需審核',   'TRUE',  'FALSE 則員工送出後直接生效,不需管理員同意'],
+  ['啟用問候語',   'TRUE',  '打卡成功後附一句話。FALSE 則只報時間與地點'],
+  ['早鳥分鐘',     30,      '比上班時間早到幾分鐘算「早鳥」'],
+  ['加班時間',     '20:00', '這個時間之後下班算加班,問候語會換一組'],
+];
+
+/**
+ * 打卡成功後附的一句話。依情境挑,不是隨機罐頭 ——
+ * 遲到的人不需要再被刺一下,加班到很晚的人需要的是關心。
+ * 每家公司可以在後台改成自己的語氣。
+ */
+const GREET = {
+  IN_EARLY:   '上班-早鳥',
+  IN_NORMAL:  '上班-一般',
+  IN_LATE:    '上班-遲到',
+  OUT_NORMAL: '下班-一般',
+  OUT_LATE:   '下班-加班',
+  OUT_FRI:    '下班-週五',
+};
+
+const DEFAULT_GREETINGS = [
+  // ── 早鳥(比上班時間早 30 分鐘以上) · 45 句 ──
+  [GREET.IN_EARLY, '這麼早!今天狀態看起來很好 🌅', 'TRUE'],
+  [GREET.IN_EARLY, '早鳥報到,先泡杯咖啡再開始吧 ☕', 'TRUE'],
+  [GREET.IN_EARLY, '比太陽還早,辛苦了!', 'TRUE'],
+  [GREET.IN_EARLY, '這麼早到,今天一定很順', 'TRUE'],
+  [GREET.IN_EARLY, '辦公室還很安靜吧?享受一下', 'TRUE'],
+  [GREET.IN_EARLY, '提早到的時間是自己的,別急著開工', 'TRUE'],
+  [GREET.IN_EARLY, '早安,今天由你開場 🌤', 'TRUE'],
+  [GREET.IN_EARLY, '這個時間到,晚上記得早點回家', 'TRUE'],
+  [GREET.IN_EARLY, '早起的你,先給自己拍拍手 👏', 'TRUE'],
+  [GREET.IN_EARLY, '安靜的早晨最好做事,加油', 'TRUE'],
+  [GREET.IN_EARLY, '來得早,今天的節奏由你決定', 'TRUE'],
+  [GREET.IN_EARLY, '早安!先深呼吸再開電腦', 'TRUE'],
+  [GREET.IN_EARLY, '第一個到的人,今天運氣應該不錯', 'TRUE'],
+  [GREET.IN_EARLY, '還沒到上班時間,先坐著發個呆也好', 'TRUE'],
+  [GREET.IN_EARLY, '早安,趁人少先把難的做掉', 'TRUE'],
+  [GREET.IN_EARLY, '這麼早,通勤應該很順吧', 'TRUE'],
+  [GREET.IN_EARLY, '早到的好處是不用趕,慢慢來', 'TRUE'],
+  [GREET.IN_EARLY, '早安!今天的空氣特別乾淨', 'TRUE'],
+  [GREET.IN_EARLY, '提早半小時,等於多賺半小時', 'TRUE'],
+  [GREET.IN_EARLY, '你比鬧鐘還準時 ⏰', 'TRUE'],
+  [GREET.IN_EARLY, '早安,先吃個早餐再說 🥪', 'TRUE'],
+  [GREET.IN_EARLY, '這個時間的辦公室最舒服', 'TRUE'],
+  [GREET.IN_EARLY, '早起不容易,今天你已經贏一半', 'TRUE'],
+  [GREET.IN_EARLY, '早安,願你今天諸事順利', 'TRUE'],
+  [GREET.IN_EARLY, '來這麼早,今天想必有大事要做', 'TRUE'],
+  [GREET.IN_EARLY, '安靜的時候最適合想事情', 'TRUE'],
+  [GREET.IN_EARLY, '早安!先開窗透個氣吧', 'TRUE'],
+  [GREET.IN_EARLY, '提早到,今天就不用追著跑', 'TRUE'],
+  [GREET.IN_EARLY, '早鳥的一天,從容開始', 'TRUE'],
+  [GREET.IN_EARLY, '早安,今天也把自己照顧好', 'TRUE'],
+  [GREET.IN_EARLY, '這麼早,記得中午補個眠', 'TRUE'],
+  [GREET.IN_EARLY, '先到的人有選位子的權利 😄', 'TRUE'],
+  [GREET.IN_EARLY, '早安,今天的第一杯水喝了嗎', 'TRUE'],
+  [GREET.IN_EARLY, '這個時間點,連電梯都不用等', 'TRUE'],
+  [GREET.IN_EARLY, '早起的節奏,通常會延續一整天', 'TRUE'],
+  [GREET.IN_EARLY, '早安,慢慢來比較快', 'TRUE'],
+  [GREET.IN_EARLY, '提前到場,心情也會比較穩', 'TRUE'],
+  [GREET.IN_EARLY, '今天由你先按下開始鍵', 'TRUE'],
+  [GREET.IN_EARLY, '早安!祝你今天效率爆棚', 'TRUE'],
+  [GREET.IN_EARLY, '這麼早到,老天都會幫你', 'TRUE'],
+  [GREET.IN_EARLY, '早安,先整理桌面再開工也不遲', 'TRUE'],
+  [GREET.IN_EARLY, '安靜的早晨,適合寫難寫的東西', 'TRUE'],
+  [GREET.IN_EARLY, '早鳥你好,今天也請多指教', 'TRUE'],
+  [GREET.IN_EARLY, '早安,這一天是你的', 'TRUE'],
+  [GREET.IN_EARLY, '提早到不是為了做更多,是為了不趕', 'TRUE'],
+
+  // ── 一般上班 · 70 句 ──
+  [GREET.IN_NORMAL, '早安,今天也請多指教 🙌', 'TRUE'],
+  [GREET.IN_NORMAL, '新的一天開始了,加油!', 'TRUE'],
+  [GREET.IN_NORMAL, '早安!記得先喝杯水再開工 💧', 'TRUE'],
+  [GREET.IN_NORMAL, '到囉,祝今天一切順利 ☀️', 'TRUE'],
+  [GREET.IN_NORMAL, '早安,今天也辛苦了', 'TRUE'],
+  [GREET.IN_NORMAL, '打卡完成,今天慢慢來就好', 'TRUE'],
+  [GREET.IN_NORMAL, '早安,先看看窗外再開始吧', 'TRUE'],
+  [GREET.IN_NORMAL, '到了就是勝利,今天加油 💪', 'TRUE'],
+  [GREET.IN_NORMAL, '早安,願今天沒有臨時的會議', 'TRUE'],
+  [GREET.IN_NORMAL, '新的一天,先做最重要的那件事', 'TRUE'],
+  [GREET.IN_NORMAL, '早安!今天也一起把事情完成', 'TRUE'],
+  [GREET.IN_NORMAL, '準時報到,今天穩穩地過', 'TRUE'],
+  [GREET.IN_NORMAL, '早安,今天想從哪件事開始?', 'TRUE'],
+  [GREET.IN_NORMAL, '到了,先坐下喘口氣再說', 'TRUE'],
+  [GREET.IN_NORMAL, '早安!今天也請對自己好一點', 'TRUE'],
+  [GREET.IN_NORMAL, '新的一天,新的機會', 'TRUE'],
+  [GREET.IN_NORMAL, '早安,把手機放下,專心一下下', 'TRUE'],
+  [GREET.IN_NORMAL, '今天也順順利利的 🍀', 'TRUE'],
+  [GREET.IN_NORMAL, '早安,先列個待辦再開工', 'TRUE'],
+  [GREET.IN_NORMAL, '到囉!今天的你也很可靠', 'TRUE'],
+  [GREET.IN_NORMAL, '早安,別忘了中午要好好吃飯', 'TRUE'],
+  [GREET.IN_NORMAL, '今天也要記得起來走一走', 'TRUE'],
+  [GREET.IN_NORMAL, '早安,咖啡先喝,信件晚點看 ☕', 'TRUE'],
+  [GREET.IN_NORMAL, '準時到,今天就先加十分', 'TRUE'],
+  [GREET.IN_NORMAL, '早安,願你今天少踩幾個雷', 'TRUE'],
+  [GREET.IN_NORMAL, '新的一天,先深呼吸三次', 'TRUE'],
+  [GREET.IN_NORMAL, '早安!今天做完該做的就好', 'TRUE'],
+  [GREET.IN_NORMAL, '到了就開始,不用醞釀太久', 'TRUE'],
+  [GREET.IN_NORMAL, '早安,今天也會過去的', 'TRUE'],
+  [GREET.IN_NORMAL, '先把最麻煩的解決掉,後面就輕鬆了', 'TRUE'],
+  [GREET.IN_NORMAL, '早安,祝你今天不被打斷', 'TRUE'],
+  [GREET.IN_NORMAL, '今天也請保持你的節奏', 'TRUE'],
+  [GREET.IN_NORMAL, '早安!有事慢慢說,不用急', 'TRUE'],
+  [GREET.IN_NORMAL, '到囉,今天也辛苦你了', 'TRUE'],
+  [GREET.IN_NORMAL, '早安,一步一步來就好', 'TRUE'],
+  [GREET.IN_NORMAL, '新的一天,把昨天的先放下', 'TRUE'],
+  [GREET.IN_NORMAL, '早安!今天的重點是什麼?', 'TRUE'],
+  [GREET.IN_NORMAL, '準時打卡的你,今天也很棒', 'TRUE'],
+  [GREET.IN_NORMAL, '早安,記得偶爾看看遠方 👀', 'TRUE'],
+  [GREET.IN_NORMAL, '今天也順著自己的步調走', 'TRUE'],
+  [GREET.IN_NORMAL, '早安,先處理小事熱身也可以', 'TRUE'],
+  [GREET.IN_NORMAL, '到了就好,其他慢慢來', 'TRUE'],
+  [GREET.IN_NORMAL, '早安!今天也是可以撐過去的一天', 'TRUE'],
+  [GREET.IN_NORMAL, '新的一天,先給自己一個微笑', 'TRUE'],
+  [GREET.IN_NORMAL, '早安,今天不用完美,做完就好', 'TRUE'],
+  [GREET.IN_NORMAL, '今天也請多喝水 💧', 'TRUE'],
+  [GREET.IN_NORMAL, '早安,願你今天心情穩定', 'TRUE'],
+  [GREET.IN_NORMAL, '到囉,今天也一起努力', 'TRUE'],
+  [GREET.IN_NORMAL, '早安!把該做的做完就下班', 'TRUE'],
+  [GREET.IN_NORMAL, '新的一天,不用跟昨天比', 'TRUE'],
+  [GREET.IN_NORMAL, '早安,今天的你已經很不錯了', 'TRUE'],
+  [GREET.IN_NORMAL, '準時到場,今天穩了', 'TRUE'],
+  [GREET.IN_NORMAL, '早安,先確認今天最重要的一件事', 'TRUE'],
+  [GREET.IN_NORMAL, '今天也會有好事發生的', 'TRUE'],
+  [GREET.IN_NORMAL, '早安!椅子調好再坐下', 'TRUE'],
+  [GREET.IN_NORMAL, '到了,今天也請照顧好自己', 'TRUE'],
+  [GREET.IN_NORMAL, '早安,今天也要記得休息', 'TRUE'],
+  [GREET.IN_NORMAL, '新的一天,先整理思緒', 'TRUE'],
+  [GREET.IN_NORMAL, '早安!祝你今天效率順暢', 'TRUE'],
+  [GREET.IN_NORMAL, '今天也請保持好心情 😊', 'TRUE'],
+  [GREET.IN_NORMAL, '早安,做不完的明天再說', 'TRUE'],
+  [GREET.IN_NORMAL, '到囉,今天的節奏由你掌握', 'TRUE'],
+  [GREET.IN_NORMAL, '早安,別忘了伸個懶腰', 'TRUE'],
+  [GREET.IN_NORMAL, '今天也請善待自己', 'TRUE'],
+  [GREET.IN_NORMAL, '早安!先把水杯裝滿', 'TRUE'],
+  [GREET.IN_NORMAL, '新的一天,先看一眼行事曆', 'TRUE'],
+  [GREET.IN_NORMAL, '早安,今天也請安全第一', 'TRUE'],
+  [GREET.IN_NORMAL, '到了就好,今天慢慢來', 'TRUE'],
+  [GREET.IN_NORMAL, '早安,願你今天輕鬆一點', 'TRUE'],
+  [GREET.IN_NORMAL, '今天也請記得抬頭挺胸', 'TRUE'],
+
+  // ── 遲到(語氣要放軟,人已經很急了) · 35 句 ──
+  [GREET.IN_LATE, '到了就好,深呼吸,慢慢來 🌿', 'TRUE'],
+  [GREET.IN_LATE, '路上辛苦了,先坐下喘口氣', 'TRUE'],
+  [GREET.IN_LATE, '沒關係,今天還很長,加油!', 'TRUE'],
+  [GREET.IN_LATE, '趕過來辛苦了,先喝口水', 'TRUE'],
+  [GREET.IN_LATE, '到了就是好的開始', 'TRUE'],
+  [GREET.IN_LATE, '別急,先把呼吸調回來', 'TRUE'],
+  [GREET.IN_LATE, '今天的一切都還來得及', 'TRUE'],
+  [GREET.IN_LATE, '辛苦了,剩下的時間好好過', 'TRUE'],
+  [GREET.IN_LATE, '先坐下,其他的等等再說', 'TRUE'],
+  [GREET.IN_LATE, '到了,那就開始吧', 'TRUE'],
+  [GREET.IN_LATE, '路上一定不好走吧,辛苦了', 'TRUE'],
+  [GREET.IN_LATE, '先別想剛剛的事,現在開始就好', 'TRUE'],
+  [GREET.IN_LATE, '喘口氣,今天還有很多時間', 'TRUE'],
+  [GREET.IN_LATE, '到了就好,別對自己太嚴', 'TRUE'],
+  [GREET.IN_LATE, '辛苦了,先把心跳放慢', 'TRUE'],
+  [GREET.IN_LATE, '今天先從簡單的事開始吧', 'TRUE'],
+  [GREET.IN_LATE, '沒事的,大家都有這種時候', 'TRUE'],
+  [GREET.IN_LATE, '先坐好,喝水,再開工', 'TRUE'],
+  [GREET.IN_LATE, '到了,剩下的交給今天的自己', 'TRUE'],
+  [GREET.IN_LATE, '辛苦了,別讓早上影響一整天', 'TRUE'],
+  [GREET.IN_LATE, '慢一點沒關係,穩一點比較重要', 'TRUE'],
+  [GREET.IN_LATE, '先放下急躁,事情還是會完成', 'TRUE'],
+  [GREET.IN_LATE, '到了就好,今天照樣可以很順', 'TRUE'],
+  [GREET.IN_LATE, '辛苦你了,先整理一下心情', 'TRUE'],
+  [GREET.IN_LATE, '別自責,今天還有很多可能', 'TRUE'],
+  [GREET.IN_LATE, '先坐下來,世界不會塌', 'TRUE'],
+  [GREET.IN_LATE, '到了,深呼吸,重新開始', 'TRUE'],
+  [GREET.IN_LATE, '路上辛苦,現在安全就好', 'TRUE'],
+  [GREET.IN_LATE, '今天還長,不用急著追進度', 'TRUE'],
+  [GREET.IN_LATE, '先喘口氣,再看今天要做什麼', 'TRUE'],
+  [GREET.IN_LATE, '辛苦了,先照顧好自己再說', 'TRUE'],
+  [GREET.IN_LATE, '到了就好,其他的都不重要', 'TRUE'],
+  [GREET.IN_LATE, '慢慢來,今天一樣做得完', 'TRUE'],
+  [GREET.IN_LATE, '先坐著休息一分鐘再開始', 'TRUE'],
+  [GREET.IN_LATE, '到了,今天就從這一刻算起', 'TRUE'],
+
+  // ── 一般下班 · 70 句 ──
+  [GREET.OUT_NORMAL, '辛苦了!好好休息 🌙', 'TRUE'],
+  [GREET.OUT_NORMAL, '今天也順利完成,下班囉!', 'TRUE'],
+  [GREET.OUT_NORMAL, '收工!記得放下工作好好吃飯 🍚', 'TRUE'],
+  [GREET.OUT_NORMAL, '辛苦一天了,回家路上小心', 'TRUE'],
+  [GREET.OUT_NORMAL, '今天到這裡就好,剩下的明天再說', 'TRUE'],
+  [GREET.OUT_NORMAL, '下班了,把工作留在辦公室', 'TRUE'],
+  [GREET.OUT_NORMAL, '辛苦了,今晚好好放鬆', 'TRUE'],
+  [GREET.OUT_NORMAL, '收工囉,今天你做得很好 👏', 'TRUE'],
+  [GREET.OUT_NORMAL, '回家吧,家裡有人在等你', 'TRUE'],
+  [GREET.OUT_NORMAL, '一天結束了,謝謝你的認真', 'TRUE'],
+  [GREET.OUT_NORMAL, '下班!今天的事今天就到這', 'TRUE'],
+  [GREET.OUT_NORMAL, '辛苦了,祝你有個好夜晚 ✨', 'TRUE'],
+  [GREET.OUT_NORMAL, '收工,今天的你已經夠努力了', 'TRUE'],
+  [GREET.OUT_NORMAL, '回家路上聽首喜歡的歌吧 🎧', 'TRUE'],
+  [GREET.OUT_NORMAL, '下班了,別再想工作的事', 'TRUE'],
+  [GREET.OUT_NORMAL, '辛苦了,晚上記得好好吃飯', 'TRUE'],
+  [GREET.OUT_NORMAL, '今天結束,明天再繼續', 'TRUE'],
+  [GREET.OUT_NORMAL, '收工!去做點跟工作無關的事', 'TRUE'],
+  [GREET.OUT_NORMAL, '辛苦一天,晚上早點睡', 'TRUE'],
+  [GREET.OUT_NORMAL, '下班囉,身體要好好休息', 'TRUE'],
+  [GREET.OUT_NORMAL, '今天也撐過來了,不容易', 'TRUE'],
+  [GREET.OUT_NORMAL, '回家吧,你今天很棒', 'TRUE'],
+  [GREET.OUT_NORMAL, '辛苦了,把肩膀放鬆一下', 'TRUE'],
+  [GREET.OUT_NORMAL, '下班!剩下的時間是自己的', 'TRUE'],
+  [GREET.OUT_NORMAL, '收工,今天到此為止', 'TRUE'],
+  [GREET.OUT_NORMAL, '辛苦了,明天的事明天再煩惱', 'TRUE'],
+  [GREET.OUT_NORMAL, '回家路上小心,晚安 🌛', 'TRUE'],
+  [GREET.OUT_NORMAL, '下班了,記得離開椅子伸展一下', 'TRUE'],
+  [GREET.OUT_NORMAL, '今天辛苦了,謝謝你', 'TRUE'],
+  [GREET.OUT_NORMAL, '收工囉,晚上做點開心的事', 'TRUE'],
+  [GREET.OUT_NORMAL, '辛苦了,回家好好放空', 'TRUE'],
+  [GREET.OUT_NORMAL, '下班!今天的你值得休息', 'TRUE'],
+  [GREET.OUT_NORMAL, '一天結束,把電腦關掉吧', 'TRUE'],
+  [GREET.OUT_NORMAL, '辛苦了,晚上別再看工作訊息', 'TRUE'],
+  [GREET.OUT_NORMAL, '回家吧,今天已經夠了', 'TRUE'],
+  [GREET.OUT_NORMAL, '收工,祝你今晚睡得好 😴', 'TRUE'],
+  [GREET.OUT_NORMAL, '辛苦一天,記得補充水分', 'TRUE'],
+  [GREET.OUT_NORMAL, '下班了,先深呼吸再走出去', 'TRUE'],
+  [GREET.OUT_NORMAL, '今天完成了,可以放心離開', 'TRUE'],
+  [GREET.OUT_NORMAL, '辛苦了,晚上留點時間給自己', 'TRUE'],
+  [GREET.OUT_NORMAL, '回家路上注意安全', 'TRUE'],
+  [GREET.OUT_NORMAL, '下班!今天的努力有被看見', 'TRUE'],
+  [GREET.OUT_NORMAL, '收工囉,休息也是工作的一部分', 'TRUE'],
+  [GREET.OUT_NORMAL, '辛苦了,晚安 🌙', 'TRUE'],
+  [GREET.OUT_NORMAL, '今天到這裡剛剛好', 'TRUE'],
+  [GREET.OUT_NORMAL, '下班了,去吃點好吃的吧 🍜', 'TRUE'],
+  [GREET.OUT_NORMAL, '辛苦一天,身體要顧好', 'TRUE'],
+  [GREET.OUT_NORMAL, '回家吧,明天再說', 'TRUE'],
+  [GREET.OUT_NORMAL, '收工!今天過得還可以吧', 'TRUE'],
+  [GREET.OUT_NORMAL, '辛苦了,願你今晚好好放鬆', 'TRUE'],
+  [GREET.OUT_NORMAL, '下班囉,別把壓力帶回家', 'TRUE'],
+  [GREET.OUT_NORMAL, '今天結束,你辛苦了', 'TRUE'],
+  [GREET.OUT_NORMAL, '回家路上慢一點,不急', 'TRUE'],
+  [GREET.OUT_NORMAL, '下班!記得跟家人說說話', 'TRUE'],
+  [GREET.OUT_NORMAL, '辛苦了,今晚早點休息', 'TRUE'],
+  [GREET.OUT_NORMAL, '收工,明天又是新的一天', 'TRUE'],
+  [GREET.OUT_NORMAL, '辛苦一天了,先別想明天', 'TRUE'],
+  [GREET.OUT_NORMAL, '回家吧,今天你已經盡力', 'TRUE'],
+  [GREET.OUT_NORMAL, '下班!去做讓自己開心的事', 'TRUE'],
+  [GREET.OUT_NORMAL, '今天也順利結束,晚安', 'TRUE'],
+  [GREET.OUT_NORMAL, '辛苦了,把工作模式關掉', 'TRUE'],
+  [GREET.OUT_NORMAL, '收工囉,今天謝謝你的付出', 'TRUE'],
+  [GREET.OUT_NORMAL, '下班了,好好享受晚上', 'TRUE'],
+  [GREET.OUT_NORMAL, '辛苦一天,記得放鬆肩頸', 'TRUE'],
+  [GREET.OUT_NORMAL, '回家路上,看看天空吧 🌇', 'TRUE'],
+  [GREET.OUT_NORMAL, '下班!今天的份量剛剛好', 'TRUE'],
+  [GREET.OUT_NORMAL, '收工,晚上別熬夜', 'TRUE'],
+  [GREET.OUT_NORMAL, '辛苦了,你今天做得夠多了', 'TRUE'],
+  [GREET.OUT_NORMAL, '今天結束了,回家充電吧 🔋', 'TRUE'],
+  [GREET.OUT_NORMAL, '下班囉,晚上好好睡一覺', 'TRUE'],
+
+  // ── 加班(20:00 之後) · 40 句 ──
+  [GREET.OUT_LATE, '這麼晚了,真的辛苦你 🌛', 'TRUE'],
+  [GREET.OUT_LATE, '加班辛苦了,早點休息別硬撐', 'TRUE'],
+  [GREET.OUT_LATE, '忙到現在,記得吃點東西 🍜', 'TRUE'],
+  [GREET.OUT_LATE, '這個時間了,回家路上小心', 'TRUE'],
+  [GREET.OUT_LATE, '辛苦了,今天已經夠拚了', 'TRUE'],
+  [GREET.OUT_LATE, '該休息了,明天還有明天的事', 'TRUE'],
+  [GREET.OUT_LATE, '熬到現在不容易,好好睡一覺', 'TRUE'],
+  [GREET.OUT_LATE, '記得跟自己說一聲辛苦了', 'TRUE'],
+  [GREET.OUT_LATE, '收工吧,身體比進度重要', 'TRUE'],
+  [GREET.OUT_LATE, '這麼晚還在,真的謝謝你', 'TRUE'],
+  [GREET.OUT_LATE, '辛苦了,剩下的明天再處理', 'TRUE'],
+  [GREET.OUT_LATE, '這個時間該回家了,別再撐', 'TRUE'],
+  [GREET.OUT_LATE, '忙這麼晚,記得補個宵夜 🍚', 'TRUE'],
+  [GREET.OUT_LATE, '辛苦你了,今天真的很拚', 'TRUE'],
+  [GREET.OUT_LATE, '現在最重要的是休息', 'TRUE'],
+  [GREET.OUT_LATE, '熬夜傷身,今天就到這裡', 'TRUE'],
+  [GREET.OUT_LATE, '辛苦了,回家路上特別小心', 'TRUE'],
+  [GREET.OUT_LATE, '這麼晚,先跟家人報個平安', 'TRUE'],
+  [GREET.OUT_LATE, '今天的努力我們都看到了', 'TRUE'],
+  [GREET.OUT_LATE, '該下班了,明天狀態才會好', 'TRUE'],
+  [GREET.OUT_LATE, '辛苦了,別讓工作吃掉睡眠', 'TRUE'],
+  [GREET.OUT_LATE, '這個時間,叫台車回去吧 🚕', 'TRUE'],
+  [GREET.OUT_LATE, '忙到現在,先喝口熱的', 'TRUE'],
+  [GREET.OUT_LATE, '辛苦你,今天真的辛苦你', 'TRUE'],
+  [GREET.OUT_LATE, '剩下的事,明天的你會處理好', 'TRUE'],
+  [GREET.OUT_LATE, '這麼晚了,眼睛也該休息了', 'TRUE'],
+  [GREET.OUT_LATE, '收工,今天已經超額完成', 'TRUE'],
+  [GREET.OUT_LATE, '辛苦了,回家好好泡個澡 🛁', 'TRUE'],
+  [GREET.OUT_LATE, '別再加了,身體會記得的', 'TRUE'],
+  [GREET.OUT_LATE, '這個時間點,健康比什麼都重要', 'TRUE'],
+  [GREET.OUT_LATE, '辛苦了,今晚一定要睡飽', 'TRUE'],
+  [GREET.OUT_LATE, '熬到現在,你已經很棒了', 'TRUE'],
+  [GREET.OUT_LATE, '該停了,事情永遠做不完的', 'TRUE'],
+  [GREET.OUT_LATE, '辛苦你,回家路上注意安全', 'TRUE'],
+  [GREET.OUT_LATE, '這麼晚,記得跟自己說聲謝謝', 'TRUE'],
+  [GREET.OUT_LATE, '收工吧,明天再戰', 'TRUE'],
+  [GREET.OUT_LATE, '辛苦了,今天的份量太重了', 'TRUE'],
+  [GREET.OUT_LATE, '這個時間該屬於休息', 'TRUE'],
+  [GREET.OUT_LATE, '忙完了嗎?那就回家吧', 'TRUE'],
+  [GREET.OUT_LATE, '辛苦了,願你今晚睡得沉', 'TRUE'],
+
+  // ── 週五下班 · 40 句 ──
+  [GREET.OUT_FRI, '週末愉快!好好放鬆 🎉', 'TRUE'],
+  [GREET.OUT_FRI, '這週辛苦了,週末見!', 'TRUE'],
+  [GREET.OUT_FRI, '收工!祝你有個美好的週末 ✨', 'TRUE'],
+  [GREET.OUT_FRI, '一週結束,把工作關機吧', 'TRUE'],
+  [GREET.OUT_FRI, '週五的下班最舒服,好好享受', 'TRUE'],
+  [GREET.OUT_FRI, '辛苦一週了,週末別想工作', 'TRUE'],
+  [GREET.OUT_FRI, '週末快樂!記得睡到自然醒 😴', 'TRUE'],
+  [GREET.OUT_FRI, '這週的事到此為止,下週見', 'TRUE'],
+  [GREET.OUT_FRI, '下班!前面是兩天的自由 🌈', 'TRUE'],
+  [GREET.OUT_FRI, '週五萬歲,好好過個週末', 'TRUE'],
+  [GREET.OUT_FRI, '一週辛苦了,祝你玩得開心', 'TRUE'],
+  [GREET.OUT_FRI, '收工囉,週末充飽電再回來 🔋', 'TRUE'],
+  [GREET.OUT_FRI, '週末愉快,記得出去走走', 'TRUE'],
+  [GREET.OUT_FRI, '這週真的辛苦你了', 'TRUE'],
+  [GREET.OUT_FRI, '下班!週末不要看工作訊息', 'TRUE'],
+  [GREET.OUT_FRI, '一週結束,給自己一點獎勵吧 🍰', 'TRUE'],
+  [GREET.OUT_FRI, '週五快樂,晚上有安排嗎?', 'TRUE'],
+  [GREET.OUT_FRI, '辛苦一週,週末好好補眠', 'TRUE'],
+  [GREET.OUT_FRI, '收工!兩天不用想公事', 'TRUE'],
+  [GREET.OUT_FRI, '週末愉快,祝你吃得開心 🍻', 'TRUE'],
+  [GREET.OUT_FRI, '這一週你做得很好', 'TRUE'],
+  [GREET.OUT_FRI, '下班囉,週末屬於你自己', 'TRUE'],
+  [GREET.OUT_FRI, '一週結束了,放下所有進度', 'TRUE'],
+  [GREET.OUT_FRI, '週五的夜晚最珍貴,好好享受', 'TRUE'],
+  [GREET.OUT_FRI, '辛苦了,週末見面再說', 'TRUE'],
+  [GREET.OUT_FRI, '收工!祝你週末天氣好 ☀️', 'TRUE'],
+  [GREET.OUT_FRI, '週末快樂,別把電腦帶回家', 'TRUE'],
+  [GREET.OUT_FRI, '這週辛苦,下週再一起努力', 'TRUE'],
+  [GREET.OUT_FRI, '下班!去做點期待很久的事', 'TRUE'],
+  [GREET.OUT_FRI, '一週的疲勞,週末慢慢還', 'TRUE'],
+  [GREET.OUT_FRI, '週末愉快,記得跟朋友聚聚', 'TRUE'],
+  [GREET.OUT_FRI, '辛苦一週了,你值得好好休息', 'TRUE'],
+  [GREET.OUT_FRI, '收工囉,週末快樂 🎊', 'TRUE'],
+  [GREET.OUT_FRI, '這週結束,明天可以賴床了', 'TRUE'],
+  [GREET.OUT_FRI, '下班!週末的時間全是你的', 'TRUE'],
+  [GREET.OUT_FRI, '一週辛苦,祝你有個放鬆的假期', 'TRUE'],
+  [GREET.OUT_FRI, '週五收工,心情特別好吧', 'TRUE'],
+  [GREET.OUT_FRI, '辛苦了,週末好好玩', 'TRUE'],
+  [GREET.OUT_FRI, '週末愉快!下週一見', 'TRUE'],
+  [GREET.OUT_FRI, '收工,這週的事就留在這週', 'TRUE'],
 ];
 
 /**
@@ -279,10 +612,11 @@ function botPushPunchResult_(companyCode, userId, r) {
   if (bot.platform === PLATFORM.TELEGRAM) {
     return tgSend_(bot.botToken, userId,
       `<b>✅ ${r.type}打卡成功</b>\n` +
-      `<code>${r.time}</code>  ${r.dateText}\n\n` +
-      `姓名:${r.name}(${r.code})\n` +
-      `地點:${r.location}\n` +
-      `判定:${r.judgement}`);
+      `<code>${r.time}</code>  ${escHtml_(r.dateText)}\n\n` +
+      `姓名:${escHtml_(r.name)}(${escHtml_(r.code)})\n` +
+      `地點:${escHtml_(r.location)}\n` +
+      `判定:${escHtml_(r.judgement)}` +
+      (r.greeting ? `\n\n${escHtml_(r.greeting)}` : ''));
   }
   return linePush_(companyCode, userId, punchFlex_(r));
 }
@@ -771,6 +1105,12 @@ function setupCompanySheets_(spreadsheetId, companyName) {
     rules.getRange(2, 1, DEFAULT_RULES.length, HEADERS[SHEETS.RULES].length).setValues(DEFAULT_RULES);
     rules.getRange(2, 3, DEFAULT_RULES.length, 1).setWrap(true);
     rules.setColumnWidth(3, 520);
+  }
+
+  const greet = ss.getSheetByName(SHEETS.GREETING);
+  if (greet.getLastRow() < 2) {
+    greet.getRange(2, 1, DEFAULT_GREETINGS.length, HEADERS[SHEETS.GREETING].length)
+      .setValues(DEFAULT_GREETINGS);
   }
 
   const rec = ss.getSheetByName(SHEETS.RECORD);
@@ -1478,7 +1818,11 @@ function punchFlex_(r) {
           flexRow_('姓名', `${r.name}(${r.code})`),
           flexRow_('地點', r.location),
           flexRow_('判定', r.judgement, accent),
-        ],
+        ].concat(r.greeting ? [
+          { type: 'separator', margin: 'lg' },
+          { type: 'text', text: r.greeting, size: 'sm', color: '#5a6472',
+            wrap: true, align: 'center', margin: 'lg' },
+        ] : []),
       },
     },
   };
@@ -2605,6 +2949,42 @@ const ADMIN_ACTIONS = {
     return { count: n };
   },
 
+  // ── 問候語 ──────────────────────────────────────────────
+  'greeting.list': function (b) {
+    const ctx = requireCompany_(b.token, b.company);
+    const all = tListGreetings_(ctx.t);
+    // 依情境分組,前端一個情境一塊文字區,比 300 列表格好編輯太多
+    const scenes = [GREET.IN_EARLY, GREET.IN_NORMAL, GREET.IN_LATE,
+                    GREET.OUT_NORMAL, GREET.OUT_LATE, GREET.OUT_FRI];
+    return {
+      enabled: tSettingBool_(ctx.t, '啟用問候語', true),
+      earlyMinutes: tSettingNumber_(ctx.t, '早鳥分鐘', 30),
+      overtimeAt: fmtHHmm_(ctx.t, '加班時間', 20, 0),
+      total: all.filter(g => g.enabled).length,
+      groups: scenes.map(sc => ({
+        scene: sc,
+        lines: all.filter(g => g.scene === sc && g.enabled).map(g => g.text),
+      })),
+    };
+  },
+
+  'greeting.save': function (b) {
+    const ctx = requireCompany_(b.token, b.company);
+    const rows = [];
+    (b.groups || []).forEach(g => {
+      String(g.lines || '').split('\n')
+        .map(x => x.trim())
+        .filter(Boolean)
+        .forEach(text => rows.push({ scene: g.scene, text: text, enabled: true }));
+    });
+    const n = tSaveGreetings_(ctx.t, rows);
+    if (b.enabled != null)      tSaveSettings_(ctx.t, [{ key: '啟用問候語', value: b.enabled ? 'TRUE' : 'FALSE' }]);
+    if (b.earlyMinutes != null) tSaveSettings_(ctx.t, [{ key: '早鳥分鐘', value: Number(b.earlyMinutes) || 30 }]);
+    if (b.overtimeAt)           tSaveSettings_(ctx.t, [{ key: '加班時間', value: String(b.overtimeAt).trim() }]);
+    logEvent_('INFO', 'greeting.save', `${ctx.t.code} 共 ${n} 句 by ${ctx.admin.name}`);
+    return { count: n };
+  },
+
   // ── 紀錄與報表 ──────────────────────────────────────────
   'record.query': function (b) {
     const ctx = requireCompany_(b.token, b.company);
@@ -2797,6 +3177,70 @@ function rulesText_(t) {
   if (!list.length) return `${t.name} 尚未設定工作守則。`;
   return `📋 ${t.name} 工作守則\n\n` +
     list.map(r => `【${r.title}】\n${r.body}`).join('\n\n');
+}
+
+// ─────────────────────────── 問候語 ───────────────────────────
+
+function tListGreetings_(t) {
+  return tRead_(t, SHEETS.GREETING)
+    .filter(r => String(r['內容']).trim() !== '')
+    .map(r => ({
+      scene: String(r['情境']).trim(),
+      text: String(r['內容']).trim(),
+      enabled: String(r['啟用']).trim().toUpperCase() === 'TRUE',
+    }));
+}
+
+function tSaveGreetings_(t, rows) {
+  const sh = tSheet_(t, SHEETS.GREETING);
+  const last = sh.getLastRow();
+  const width = HEADERS[SHEETS.GREETING].length;
+  if (last > 1) sh.getRange(2, 1, last - 1, width).clearContent();
+  const clean = (rows || [])
+    .filter(r => String(r.text || '').trim() !== '')
+    .map(r => [String(r.scene || GREET.IN_NORMAL).trim(), String(r.text).trim(), r.enabled ? 'TRUE' : 'FALSE']);
+  if (clean.length) sh.getRange(2, 1, clean.length, width).setValues(clean);
+  SpreadsheetApp.flush();
+  return clean.length;
+}
+
+/**
+ * 挑一句話。依情境選,不是全部混在一起隨機 ——
+ * 遲到的人拿到的是「到了就好」,不是「今天狀態很好」。
+ * @param {string} type 上班 / 下班
+ * @param {Date} now
+ * @param {string} judgement judge_() 的結果
+ */
+function tGreeting_(t, type, now, judgement) {
+  if (!tSettingBool_(t, '啟用問候語', true)) return '';
+
+  const mins = now.getHours() * 60 + now.getMinutes();
+  let scene;
+
+  if (type === PUNCH_IN) {
+    if (String(judgement).indexOf('遲到') === 0) {
+      scene = GREET.IN_LATE;
+    } else {
+      const s = parseHHmm_(tSetting_(t, '上班時間', '09:00'), 9, 0);
+      const early = tSettingNumber_(t, '早鳥分鐘', 30);
+      scene = mins <= (s.h * 60 + s.m - early) ? GREET.IN_EARLY : GREET.IN_NORMAL;
+    }
+  } else {
+    const ot = parseHHmm_(tSetting_(t, '加班時間', '20:00'), 20, 0);
+    if (mins >= ot.h * 60 + ot.m)      scene = GREET.OUT_LATE;
+    else if (now.getDay() === 5)       scene = GREET.OUT_FRI;   // 星期五
+    else                               scene = GREET.OUT_NORMAL;
+  }
+
+  let pool = tListGreetings_(t).filter(g => g.enabled && g.scene === scene);
+  // 該情境沒設定就退回同類型的一般版,再沒有就不附
+  if (!pool.length) {
+    const fallback = type === PUNCH_IN ? GREET.IN_NORMAL : GREET.OUT_NORMAL;
+    pool = tListGreetings_(t).filter(g => g.enabled && g.scene === fallback);
+  }
+  if (!pool.length) return '';
+
+  return pool[Math.floor(Math.random() * pool.length)].text;
 }
 
 // ─────────────────────────── 日期工具 ───────────────────────────
@@ -3226,6 +3670,7 @@ function handlePunch(payload) {
     const result = {
       ok: true,
       type: type,
+      greeting: tGreeting_(t, type, now, judgement),
       time: Utilities.formatDate(now, CONFIG.TZ, 'HH:mm'),
       dateText: Utilities.formatDate(now, CONFIG.TZ, 'yyyy/MM/dd (E)'),
       code: String(emp['員工編號']),

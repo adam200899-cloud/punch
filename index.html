@@ -78,6 +78,9 @@
   .result .when{font-size:44px;font-weight:700;margin-top:10px;font-variant-numeric:tabular-nums}
   .result .meta{font-size:14px;color:var(--muted);margin-top:12px;line-height:1.85;
                 white-space:pre-line;max-width:340px}
+  .result .greet{margin-top:22px;padding-top:20px;border-top:1px solid var(--line);
+                 font-size:16px;line-height:1.7;max-width:320px;display:none}
+  .result.ok .greet{color:var(--ink)}
   .result .acts{margin-top:30px;display:flex;gap:10px;width:100%;max-width:340px}
   .result .acts button{flex:1;padding:15px}
   .result .acts .alt{background:transparent;color:var(--muted);border:1px solid var(--line)}
@@ -134,6 +137,7 @@
   <div class="why" id="rWhy"></div>
   <div class="when" id="rWhen"></div>
   <div class="meta" id="rMeta"></div>
+  <div class="greet" id="rGreet"></div>
   <div class="acts" id="rActs"></div>
 </div>
 
@@ -208,6 +212,8 @@ function showResult(ok, d){
   $('rWhy').textContent  = d.why || '';
   $('rWhen').textContent = d.when || '';
   $('rMeta').textContent = d.meta || '';
+  $('rGreet').textContent = d.greeting || '';
+  $('rGreet').style.display = d.greeting ? 'block' : 'none';
 
   const acts = $('rActs');
   acts.innerHTML = '';
@@ -397,6 +403,7 @@ async function punch(type){
         why:  r.type + '打卡',
         when: r.time,
         meta: `${r.dateText}\n${r.name}(${r.code})\n${r.location} · ${r.judgement}`,
+        greeting: r.greeting || '',
       });
       refresh();                      // 背景更新今日狀態,不擋住結果畫面
       if(platform === 'telegram' || (typeof liff !== 'undefined' && liff.isInClient && liff.isInClient())){

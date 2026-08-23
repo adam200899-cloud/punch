@@ -806,6 +806,15 @@ async function viewRules(v){
     </div>
 
     <div class="card">
+      <h3>打卡問候語</h3>
+      <p class="note" style="margin-bottom:14px">
+        打卡成功後附的一句話,依情境隨機挑。<b>一行一句</b>,想加多少都可以。
+        遲到那組語氣刻意放軟 —— 人已經很急了,不需要再被刺一下。
+      </p>
+      <div id="gWrap"><span class="note">載入中…</span></div>
+    </div>
+
+    <div class="card">
       <h3>假別與規則</h3>
       <p class="note" style="margin-bottom:12px">
         「需提前天數」設 <b>0</b> 表示可事後補辦。病假、喪假、公傷病假依法不能要求預先申請,請保持 0。
@@ -884,6 +893,49 @@ async function viewRules(v){
     })).filter(x=>x.name);
     try{ const res = await api('leavetype.save',{types}); toast(`已儲存 ${res.count} 種假別`); }
     catch(e){ toast(e.message, true); }
+  };
+
+  // ── 問候語 ──
+  const g = await api('greeting.list');
+  const HINT = {
+    '上班-早鳥': '比上班時間早 ' + g.earlyMinutes + ' 分鐘以上到',
+    '上班-一般': '準時或稍早到',
+    '上班-遲到': '超過寬限時間才打卡',
+    '下班-一般': '平日正常下班',
+    '下班-加班': g.overtimeAt + ' 之後才下班',
+    '下班-週五': '星期五下班(加班時段優先)',
+  };
+  $('gWrap').innerHTML = `
+    <div class="row" style="margin-bottom:16px;align-items:center">
+      <label style="display:flex;align-items:center;gap:7px;margin:0;font-size:14px">
+        <input type="checkbox" id="gOn" ${g.enabled?'checked':''} style="width:auto"> 啟用問候語
+      </label>
+      <span class="note">目前共 <b>${g.total}</b> 句</span>
+      <div class="field" style="margin:0"><label>早鳥門檻(分)</label>
+        <input id="gEarly" type="number" min="0" value="${g.earlyMinutes}" style="width:84px"></div>
+      <div class="field" style="margin:0"><label>加班起算</label>
+        <input id="gOt" type="time" value="${esc(g.overtimeAt)}" style="width:auto"></div>
+    </div>
+    ${g.groups.map((x,i)=>`
+      <div class="field">
+        <label>${esc(x.scene)} <span class="note">· ${esc(HINT[x.scene]||'')} · ${x.lines.length} 句</span></label>
+        <textarea data-scene="${esc(x.scene)}" style="min-height:120px;font-size:13px;line-height:1.7">${esc(x.lines.join('\n'))}</textarea>
+      </div>`).join('')}
+    <button class="pri" id="gSave">儲存問候語</button>`;
+
+  $('gSave').onclick = async ()=>{
+    const groups = [...$('gWrap').querySelectorAll('textarea')]
+      .map(ta => ({ scene: ta.dataset.scene, lines: ta.value }));
+    try{
+      const res = await api('greeting.save', {
+        groups,
+        enabled: $('gOn').checked,
+        earlyMinutes: $('gEarly').value,
+        overtimeAt: $('gOt').value,
+      });
+      toast(`已儲存 ${res.count} 句`);
+      render();
+    }catch(e){ toast(e.message, true); }
   };
 }
 
