@@ -11,7 +11,7 @@ window.PUNCH_CONFIG = {
    * Apps Script 部署為網頁應用程式之後拿到的那條,結尾是 /exec。
    * 不要加任何 ?p=... 參數,程式會自己接。
    */
-  GAS_URL: 'https://script.google.com/macros/s/請貼上你的部署ID/exec',
+  GAS_URL: 'https://script.google.com/macros/s/AKfycbwYr8qtCtKHqMLu0d2jC-P6q-bE_OgTxI3mYV6HQ-6avk7uiEfkSjHbdzmx277uZFJrTA/exec',
 
   /**
    * ② 後台登入驗證平台:'telegram' 或 'line'
