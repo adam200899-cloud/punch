@@ -81,6 +81,13 @@
   .result .greet{margin-top:22px;padding-top:20px;border-top:1px solid var(--line);
                  font-size:16px;line-height:1.7;max-width:320px;display:none}
   .result.ok .greet{color:var(--ink)}
+  /* 技術細節預設收起來 —— 員工只需要知道成功或失敗、還有下一步怎麼做 */
+  .result .diag{margin-top:18px;font-size:12px;color:var(--muted);display:none}
+  .result .diag button{background:none;color:var(--muted);border:0;font-size:12px;
+                       padding:6px;text-decoration:underline;width:auto;font-weight:400}
+  .result .diag .val{display:none;margin-top:6px;font-family:ui-monospace,monospace;
+                     font-size:12px;word-break:break-all}
+  .result .diag.open .val{display:block}
   .result .acts{margin-top:30px;display:flex;gap:10px;width:100%;max-width:340px}
   .result .acts button{flex:1;padding:15px}
   .result .acts .alt{background:transparent;color:var(--muted);border:1px solid var(--line)}
@@ -138,6 +145,10 @@
   <div class="when" id="rWhen"></div>
   <div class="meta" id="rMeta"></div>
   <div class="greet" id="rGreet"></div>
+  <div class="diag" id="rDiag">
+    <button type="button" id="rDiagBtn">還是不行?把資訊給管理員</button>
+    <div class="val" id="rDiagVal"></div>
+  </div>
   <div class="acts" id="rActs"></div>
 </div>
 
@@ -214,6 +225,9 @@ function showResult(ok, d){
   $('rMeta').textContent = d.meta || '';
   $('rGreet').textContent = d.greeting || '';
   $('rGreet').style.display = d.greeting ? 'block' : 'none';
+  $('rDiag').className = 'diag';
+  $('rDiag').style.display = d.detail ? 'block' : 'none';
+  $('rDiagVal').textContent = d.detail || '';
 
   const acts = $('rActs');
   acts.innerHTML = '';
@@ -231,6 +245,8 @@ function showResult(ok, d){
   acts.appendChild(close);
 }
 function hideResult(){ $('result').className = 'result'; }
+
+$('rDiagBtn').addEventListener('click', ()=> $('rDiag').classList.toggle('open'));
 
 // ── 對外 IP 偵測 ──
 function withTimeout(p, ms){
@@ -377,14 +393,15 @@ async function refresh(){
 
   const c = r.ipCheck || {};
   if(!c.enforced){
-    setNet('ok','地點驗證已關閉(測試模式)', c.ip);
+    setNet('ok','地點驗證已關閉(測試模式)', '');
     setButtons(true, r.suggest);
   }else if(c.allowed){
-    setNet('ok','已在「'+c.location+'」網路環境內', c.ip);
+    setNet('ok','已在「'+c.location+'」,可以打卡', '');
     setButtons(true, r.suggest);
   }else{
-    setNet('bad','不在公司網路環境內', c.ip ? ('目前位置:'+c.ip) : '');
-    say('bad', (c.hint || '你目前不在公司網路環境內,打卡沒有完成。') + '\n連上之後按下面的「重新偵測網路位置」。');
+    setNet('bad', c.title || '請連上公司 Wi-Fi', '');
+    say('bad', (c.hint || '你必須人在公司現場、連上公司 Wi-Fi 才能打卡。') +
+               '\n連上之後按下面的「重新偵測網路位置」。');
     setButtons(false, r.suggest);
   }
 }
@@ -411,8 +428,9 @@ async function punch(type){
       }
     }else if(r.code === 'IP_DENIED'){
       showResult(false, {
-        why:  r.title || 'IP 不符合',
-        meta: (r.ip ? `目前位置:${r.ip}\n\n` : '') + (r.message || ''),
+        why:  r.title || '請連上公司 Wi-Fi',
+        meta: r.message || '',
+        detail: r.ip ? '偵測到的網路位置:' + r.ip : '',
         retry: true,
       });
       refresh();

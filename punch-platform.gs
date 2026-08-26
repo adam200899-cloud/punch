@@ -99,6 +99,9 @@ const DEFAULT_SETTINGS = [
   ['啟用問候語',   'TRUE',  '打卡成功後附一句話。FALSE 則只報時間與地點'],
   ['早鳥分鐘',     30,      '比上班時間早到幾分鐘算「早鳥」'],
   ['加班時間',     '20:00', '這個時間之後下班算加班,問候語會換一組'],
+  ['啟用每日提醒', 'TRUE',  '每天固定時間推一則訊息,順便把打卡按鈕重新叫出來'],
+  ['每日提醒時間', '08:30', '格式 HH:mm。實際推送可能有正負十幾分鐘誤差'],
+  ['假日也提醒',   'FALSE', 'TRUE 則週六日也推。國定假日系統無法判斷,一律會推'],
 ];
 
 /**
@@ -621,6 +624,20 @@ function botPushPunchResult_(companyCode, userId, r) {
   return linePush_(companyCode, userId, punchFlex_(r));
 }
 
+/**
+ * 每日提醒:把訊息連同打卡按鈕一起推出去。
+ * Telegram 的常駐鍵盤會被使用者收起來,靠這個每天重新掛回去。
+ * LINE 沒有常駐鍵盤(那是圖文選單,設一次就固定),所以改附開啟打卡頁的按鈕。
+ */
+function botPushDailyReminder_(companyCode, userId, text) {
+  const bot = getBot_(companyCode);
+  if (bot.platform === PLATFORM.TELEGRAM) {
+    return tgSendWithKeyboard_(bot.botToken, userId, escHtml_(text), tgPunchKeyboard_(companyCode));
+  }
+  return linePush_(companyCode, userId,
+    [textMsg_(text), punchButtonMsg_(companyCode, '打卡', '請確認已連上公司 Wi-Fi')]);
+}
+
 // ─────────────────────────── 打卡頁網址 ───────────────────────────
 
 function pageBaseUrl_() {
@@ -641,6 +658,12 @@ function punchEntryUrl_(companyCode) {
 function punchPageUrl_(companyCode) {
   const base = pageBaseUrl_();
   return base ? `${base}/index.html?c=${companyCode}` : '';
+}
+
+/** 管理後台。平台層的,不分公司 */
+function adminPageUrl_() {
+  const base = pageBaseUrl_();
+  return base ? base + '/admin.html' : '';
 }
 
 /** 請假申請頁(Telegram WebApp / LIFF 共用同一份) */
@@ -1609,23 +1632,26 @@ function tCheckIps_(t, ips) {
   return Object.assign({}, base, { ip: list.join(', '), reason: 'NOT_IN_RANGE' });
 }
 
-/** 失敗的一句話標題,直接顯示在「打卡失敗」下面 */
+/**
+ * 失敗畫面的大字。寫的是「接下來怎麼做」,不是「哪裡出錯」——
+ * 員工看到的應該是一句可以照做的指示,不是技術診斷。
+ */
 function ipDeniedTitle_(check) {
   switch (check.reason) {
-    case 'NO_IP':      return '無法取得網路位置';
-    case 'PRIVATE_IP': return 'IP 不符合(偵測到內網位址)';
-    case 'NO_RULE':    return '公司尚未設定允許的網路位置';
-    default:           return 'IP 不符合';
+    case 'NO_IP':      return '無法確認你的網路';
+    case 'PRIVATE_IP': return '請關閉 VPN 或 Proxy';
+    case 'NO_RULE':    return '公司尚未設定,請聯絡管理員';
+    default:           return '請連上公司 Wi-Fi';
   }
 }
 
-/** 失敗的處理建議 */
+/** 標題底下的補充說明 */
 function ipDeniedMessage_(check) {
   switch (check.reason) {
     case 'NO_IP':
-      return '請確認手機已連上公司 Wi-Fi,然後重新偵測。';
+      return '請確認手機已連上公司 Wi-Fi,然後再試一次。';
     case 'PRIVATE_IP':
-      return '請關閉 VPN 或 Proxy,直接連公司 Wi-Fi 後重試。';
+      return '偵測到的是內網位址,無法確認你在公司。\n請關閉 VPN 或 Proxy,直接連公司 Wi-Fi。';
     case 'NO_RULE':
       return '請聯絡管理員設定公司的允許網段。';
     default:
@@ -1932,7 +1958,7 @@ function tgSetMenuButton_(botToken, webAppUrl) {
 function tgSetCommands_(botToken) {
   return tgApi_(botToken, 'setMyCommands', {
     commands: [
-      { command: 'bind',  description: '綁定員工編號,例如 /bind A001' },
+      { command: 'bind',  description: '綁定身分(直接送出即可)' },
       { command: 'punch', description: '開啟打卡頁' },
       { command: 'today', description: '今天的打卡紀錄' },
       { command: 'rules', description: '工作守則' },
@@ -1940,6 +1966,10 @@ function tgSetCommands_(botToken) {
       { command: 'myleave', description: '我的請假紀錄' },
       { command: 'month', description: '本月出勤摘要' },
       { command: 'me',    description: '查看綁定資料' },
+      { command: 'board', description: '(管理員)今天誰到了、誰沒到' },
+      { command: 'admin', description: '(管理員)開啟管理後台' },
+      { command: 'newbie',description: '(管理員)待設定的新人' },
+      { command: 'pending',description:'(管理員)待審核的請假' },
     ],
   });
 }
@@ -2076,12 +2106,25 @@ function handleTelegramUpdate_(companyCode, update) {
     const map = {
       start: '', help: '', bind: '綁定', punch: '打卡', today: '查詢',
       month: '本月', me: '我是誰', rules: '守則', leave: '請假', myleave: '我的請假',
+      board: '出勤', newbie: '待設定', pending: '待審核', admin: '後台',
     };
     const mapped = map[slash[1].toLowerCase()];
     text = mapped === undefined ? text : (mapped + (slash[2] ? ' ' + slash[2] : '')).trim();
   }
 
   const r = runCommand_(t, String(from.id || chatId), text, displayName);
+
+  // 指令要求附一顆開啟網頁的按鈕(例如「後台」)
+  if (r.webApp && r.webApp.url) {
+    tgApi_(bot.botToken, 'sendMessage', {
+      chat_id: chatId, text: toHtml_(r.text), parse_mode: 'HTML',
+      reply_markup: { inline_keyboard: [[
+        { text: r.webApp.label, web_app: { url: r.webApp.url } },
+      ]] },
+    });
+    return;
+  }
+
   tgSendWithKeyboard_(bot.botToken, chatId, toHtml_(r.text),
                       r.showKeyboard ? tgPunchKeyboard_(companyCode) : null);
 }
@@ -2150,7 +2193,7 @@ function toHtml_(text) {
  * @param {string} userId 平台的使用者 ID
  * @param {string} text 已正規化的指令文字(空字串代表「剛加好友 / /start」)
  * @param {string} displayName
- * @return {{text:string, showKeyboard:boolean}}
+ * @return {{text:string, showKeyboard:boolean, webApp?:{label:string,url:string}}}
  */
 function runCommand_(t, userId, text, displayName) {
   const clean = String(text || '').trim().replace(/\s+/g, ' ');
@@ -2195,6 +2238,18 @@ function runCommand_(t, userId, text, displayName) {
     return { text: (r.ok ? '✅ ' : '❌ ') + r.message, showKeyboard: false };
   }
 
+  // 有人會直覺把啟用碼/邀請碼貼進聊天室 —— 那是後台網頁的欄位,不是這裡。
+  // 給一句像樣的指引,而不是丟一堆無關的指令說明。
+  if (looksLikeAdminCode_(clean)) {
+    return {
+      text: '這串看起來是後台的啟用碼或邀請碼 —— 那要填在**後台網頁**裡,不是聊天室。\n\n' +
+            '請開啟管理 bot,點輸入框旁邊的選單按鈕開啟後台,\n' +
+            '在登入畫面點「我有邀請碼 / 首次啟用」再填進去。\n\n' +
+            '(為了安全,建議把剛才那則訊息刪掉。)',
+      showKeyboard: false,
+    };
+  }
+
   if (/^(守則|工作守則|規定|rules)$/i.test(clean)) {
     return { text: rulesText_(t), showKeyboard: true };
   }
@@ -2207,6 +2262,40 @@ function runCommand_(t, userId, text, displayName) {
 
   if (/^(我的請假|請假紀錄|myleave)$/i.test(clean)) {
     return { text: myLeavesText_(t, userId), showKeyboard: true };
+  }
+
+  // ── 管理員的日常三件事,不用開後台 ──
+
+  // 待設定名單
+  if (/^(待設定|新人|newbie)$/i.test(clean)) {
+    if (!isAdminOf_(userId, t)) return { text: '你沒有管理權限。', showKeyboard: false };
+    return { text: pendingEmployeesText_(t), showKeyboard: false };
+  }
+
+  // 設定 1 A001 王小明 業務部
+  const assign = clean.match(/^設定\s+(\d+)\s+(\S+)\s+(\S+)(?:\s+(\S+))?$/);
+  if (assign) {
+    if (!isAdminOf_(userId, t)) return { text: '你沒有管理權限。', showKeyboard: false };
+    return { text: assignByIndex_(t, Number(assign[1]), assign[2], assign[3], assign[4] || ''), showKeyboard: false };
+  }
+
+  // 開後台 —— 沒有獨立管理 bot 時,靠這個指令拿到入口
+  if (/^(後台|管理|admin)$/i.test(clean)) {
+    if (!isAdminOf_(userId, t)) return { text: '你沒有管理權限。', showKeyboard: false };
+    const url = adminPageUrl_();
+    if (!url) return { text: '尚未設定後台網址,請先在指令碼屬性填 PAGE_BASE_URL。', showKeyboard: false };
+    return {
+      text: '管理後台。點下面的按鈕開啟,會在 Telegram 裡直接展開。\n\n' +
+            '日常的待設定、出勤、審核都可以直接打字,不用開後台。',
+      showKeyboard: false,
+      webApp: { label: '⚙️ 開啟管理後台', url: url },
+    };
+  }
+
+  // 今天誰到了、誰沒到
+  if (/^(出勤|今日出勤|誰沒來|board)$/i.test(clean)) {
+    if (!isAdminOf_(userId, t)) return { text: '你沒有管理權限。', showKeyboard: false };
+    return { text: todayBoardText_(t), showKeyboard: false };
   }
 
   if (/^(待審核|審核|pending)$/i.test(clean)) {
@@ -2353,6 +2442,116 @@ function notifyPendingEmployee_(t, userId, displayName, already) {
   approverUserIds_(t.code).forEach(uid => {
     try { botPushText_(t.code, uid, text); } catch (e) { /* 未與該 bot 互動過 */ }
   });
+}
+
+/**
+ * 判斷這段文字像不像後台的啟用碼或邀請碼。
+ * 兩者都是 randomCode_() 產生的:去掉 I O 0 1 的大寫英數,8 或 10 碼。
+ * 純粹用來給提示,不做任何授權判斷。
+ */
+function looksLikeAdminCode_(text) {
+  const s = String(text || '').trim();
+  if (!/^[A-HJ-NP-Z2-9]{8}$|^[A-HJ-NP-Z2-9]{10}$/.test(s)) return false;
+  // 全是英文或全是數字的短字串多半是別的東西(例如員工編號),排除掉
+  return /[A-Z]/.test(s) && /[2-9]/.test(s);
+}
+
+// ─────────────────────────── 管理員的聊天室指令 ───────────────────────────
+
+function isAdminOf_(userId, t) {
+  const a = getAdmin_(userId);
+  return !!a && (a.role === ROLE.PLATFORM || a.companyCode === t.code);
+}
+
+/** 待設定的人依綁定時間排序,序號就是這個順序 —— 兩個指令必須用同一份 */
+function pendingList_(t) {
+  return tRead_(t, SHEETS.EMPLOYEE)
+    .filter(r => String(r['狀態']).trim() === EMP_STATUS.PENDING)
+    .filter(r => String(r['平台UserID']).trim() !== '')
+    .sort((a, b) => new Date(a['綁定時間'] || 0) - new Date(b['綁定時間'] || 0));
+}
+
+function pendingEmployeesText_(t) {
+  const list = pendingList_(t);
+  if (!list.length) return `${t.name} 目前沒有待設定的員工。`;
+
+  const rows = list.map((r, i) => {
+    const at = r['綁定時間'] instanceof Date
+      ? Utilities.formatDate(r['綁定時間'], CONFIG.TZ, 'MM/dd HH:mm') : '';
+    return `${i + 1}. ${r['暱稱'] || '(沒有設定名稱)'}${at ? '   綁定於 ' + at : ''}`;
+  });
+
+  return `⏳ ${t.name} 待設定(${list.length} 人)\n\n` + rows.join('\n') +
+    '\n\n回覆以下格式完成設定:\n設定 序號 員工編號 姓名 部門\n\n' +
+    '例如:設定 1 A001 王小明 業務部\n(部門可以不填)';
+}
+
+function assignByIndex_(t, index, code, name, dept) {
+  const list = pendingList_(t);
+  if (!list.length) return '目前沒有待設定的員工。';
+  if (index < 1 || index > list.length) {
+    return `序號超出範圍,目前只有 ${list.length} 筆。先輸入「待設定」看一次清單。`;
+  }
+
+  const row = list[index - 1];
+  const uid = String(row['平台UserID']).trim();
+  const nickname = row['暱稱'] || '(沒有設定名稱)';
+
+  let r;
+  try {
+    r = tAssignEmployee_(t, uid, { code: code, name: name, dept: dept, status: EMP_STATUS.ACTIVE });
+  } catch (err) {
+    return '❌ ' + (err && err.message ? err.message : err);
+  }
+
+  // 通知本人可以開始打卡了
+  try {
+    botPushDailyReminder_(t.code, uid,
+      `✅ 你的資料設定完成了\n\n公司:${t.name}\n姓名:${name}\n員工編號:${code}` +
+      (dept ? `\n部門:${dept}` : '') +
+      '\n\n現在可以開始打卡了。記得要先連上公司 Wi-Fi。');
+  } catch (e) { /* 未與 bot 互動過 */ }
+
+  const left = pendingList_(t).length;
+  return `✅ ${r.message}\nTelegram 暱稱:${nickname}\n已通知他可以開始打卡。` +
+    (left ? `\n\n還有 ${left} 人待設定,序號已重新排過,請重新輸入「待設定」。` : '\n\n待設定名單已清空。');
+}
+
+/** 今天誰到了、誰沒到 —— 後台看板的文字版 */
+function todayBoardText_(t) {
+  const b = tTodayBoard_(t);
+  const c = b.counts;
+  const icon = { '未打卡': '⚠️', '上班中': '🟢', '已下班': '🏁', '請假中': '🌴' };
+
+  const lines = [`📋 ${t.name}  ${b.date}  ${b.serverTime}`, ''];
+  lines.push(`應到 ${c.expected} · 已到 ${c.arrived} · 未打卡 ${c.notYet}` +
+             (c.late ? ` · 遲到 ${c.late}` : '') +
+             (c.onLeave ? ` · 請假 ${c.onLeave}` : ''));
+
+  const notYet = b.people.filter(p => p.state === '未打卡');
+  if (notYet.length) {
+    lines.push('', '⚠️ 還沒打卡');
+    notYet.forEach(p => lines.push(`   ${p.name}${p.dept ? ' · ' + p.dept : ''}`));
+  }
+
+  const late = b.people.filter(p => p.late);
+  if (late.length) {
+    lines.push('', '⏰ 遲到');
+    late.forEach(p => lines.push(`   ${p.name}  ${p.inTime}  ${p.late}`));
+  }
+
+  const leave = b.people.filter(p => p.state === '請假中');
+  if (leave.length) {
+    lines.push('', '🌴 請假中');
+    leave.forEach(p => lines.push(`   ${p.name}  ${p.leaveType}`));
+  }
+
+  if (!notYet.length && !late.length) lines.push('', '✅ 全員準時到齊');
+
+  const done = b.people.filter(p => p.state === '已下班').length;
+  if (done) lines.push('', `${icon['已下班']} 已下班 ${done} 人`);
+
+  return lines.join('\n');
 }
 
 
@@ -4125,12 +4324,14 @@ function tTodayBoard_(t) {
  * 安裝:在編輯器執行 installTriggers() 一次,或用試算表選單「打卡平台 → 安裝排程」。
  */
 
-const MONTHLY_REPORT_HOUR = 20;  // 月底當天晚上幾點推播(24 小時制)
+const MONTHLY_REPORT_HOUR = 20;   // 月底當天晚上幾點推播(24 小時制)
+const MORNING_CHECK_MINUTES = 15; // 每日提醒的檢查間隔
 
 function installTriggers() {
   // 先清掉舊的,避免重複安裝造成一天推很多次
   ScriptApp.getProjectTriggers().forEach(tr => {
-    if (tr.getHandlerFunction() === 'dailyTick') ScriptApp.deleteTrigger(tr);
+    const fn = tr.getHandlerFunction();
+    if (fn === 'dailyTick' || fn === 'morningTick') ScriptApp.deleteTrigger(tr);
   });
 
   ScriptApp.newTrigger('dailyTick')
@@ -4140,8 +4341,16 @@ function installTriggers() {
     .inTimezone(CONFIG.TZ)
     .create();
 
-  const msg = `排程安裝完成。\n每天 ${MONTHLY_REPORT_HOUR}:00 檢查一次,` +
-              '當月最後一天會自動產生月報並推播給各公司管理員。';
+  // 各公司的提醒時間不一樣(上班時間不同),所以定期檢查而不是固定時刻觸發
+  ScriptApp.newTrigger('morningTick')
+    .timeBased()
+    .everyMinutes(MORNING_CHECK_MINUTES)
+    .create();
+
+  const msg = `排程安裝完成。\n\n` +
+              `每 ${MORNING_CHECK_MINUTES} 分鐘檢查一次,對到各公司的「每日提醒時間」` +
+              `(預設 08:30)就推一則早安訊息,順便把打卡按鈕重新掛回聊天室。\n\n` +
+              `每天 ${MONTHLY_REPORT_HOUR}:00 檢查一次,當月最後一天自動產生月報並推播給管理員。`;
   console.log(msg);
   try { SpreadsheetApp.getUi().alert(msg); } catch (e) { /* 非 UI 環境 */ }
   return msg;
@@ -4150,9 +4359,97 @@ function installTriggers() {
 function removeTriggers() {
   let n = 0;
   ScriptApp.getProjectTriggers().forEach(tr => {
-    if (tr.getHandlerFunction() === 'dailyTick') { ScriptApp.deleteTrigger(tr); n++; }
+    const fn = tr.getHandlerFunction();
+    if (fn === 'dailyTick' || fn === 'morningTick') { ScriptApp.deleteTrigger(tr); n++; }
   });
   return `已移除 ${n} 個排程`;
+}
+
+// ─────────────────────────── 每日提醒 ───────────────────────────
+
+/** 每 15 分鐘被叫一次,判斷有沒有哪家公司到了推播時間 */
+function morningTick() {
+  const now = new Date();
+  listCompanies_().filter(c => c.status === '啟用').forEach(c => {
+    try {
+      maybeMorningPush_(c.code, now);
+    } catch (err) {
+      logEvent_('ERROR', 'morningTick/' + c.code, err && err.stack ? err.stack : err);
+    }
+  });
+}
+
+/** 判斷這家公司現在該不該推,該推就推 */
+function maybeMorningPush_(companyCode, now) {
+  const t = tenant_(companyCode);
+  if (!tSettingBool_(t, '啟用每日提醒', true)) return;
+
+  // 落在設定時間之後的一個檢查區間內才推
+  const target = parseHHmm_(tSetting_(t, '每日提醒時間', '08:30'), 8, 30);
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  const tgtMin = target.h * 60 + target.m;
+  if (nowMin < tgtMin || nowMin >= tgtMin + MORNING_CHECK_MINUTES) return;
+
+  const dow = now.getDay();
+  if ((dow === 0 || dow === 6) && !tSettingBool_(t, '假日也提醒', false)) return;
+
+  // 同一天只推一次 —— 觸發器偶爾會重跑
+  const today = Utilities.formatDate(now, CONFIG.TZ, 'yyyy-MM-dd');
+  const key = 'MORNING_' + companyCode;
+  if (PROP.getProperty(key) === today) return;
+  PROP.setProperty(key, today);
+
+  const n = sendMorningReminder_(t, now);
+  logEvent_('INFO', 'morningPush', `${companyCode} 推給 ${n} 人`);
+}
+
+/**
+ * 推給所有已綁定的在職員工。今天有核准假的人跳過 —— 休假的人不需要被叫。
+ * @return {number} 實際推出去的人數
+ */
+function sendMorningReminder_(t, now) {
+  const today = Utilities.formatDate(now, CONFIG.TZ, 'yyyy/MM/dd');
+
+  const onLeave = {};
+  tListLeaves_(t).forEach(l => {
+    if (l.status === LEAVE_STATUS.APPROVED && l.from <= today && today <= l.to) {
+      onLeave[String(l.employeeCode).toUpperCase()] = l;
+    }
+  });
+
+  const workStart = fmtHHmm_(t, '上班時間', 9, 0);
+  const weekday = Utilities.formatDate(now, CONFIG.TZ, 'M/d (E)');
+  let sent = 0;
+
+  tRead_(t, SHEETS.EMPLOYEE).forEach(r => {
+    const code = String(r['員工編號']).trim();
+    const uid = String(r['平台UserID']).trim();
+    if (!code || !uid) return;
+    if (String(r['狀態']).trim() !== EMP_STATUS.ACTIVE) return;
+    if (onLeave[code.toUpperCase()]) return;
+
+    // 已經打過上班卡的人,改成報告狀態而不是催他打卡
+    const punched = tRecordsOfDay_(t, code, now).filter(x => x['類型'] === PUNCH_IN)[0];
+    const text = punched
+      ? `☀️ 早安,${r['姓名']}\n${weekday} 你已於 ${fmtTime_(punched['時間戳記'])} 完成上班打卡。`
+      : `☀️ 早安,${r['姓名']}\n${weekday} 上班時間 ${workStart},記得用下面的按鈕打卡。`;
+
+    try { botPushDailyReminder_(t.code, uid, text); sent++; }
+    catch (e) { logEvent_('WARN', 'morningPush', `${t.code} ${code} 推播失敗:${e}`); }
+  });
+
+  return sent;
+}
+
+/** 手動測試用:立刻對某家公司推一次,不管時間也不管今天推過沒 */
+function testMorningPush(companyCode) {
+  const code = companyCode || (listCompanies_()[0] || {}).code;
+  if (!code) throw new Error('還沒有任何公司');
+  const n = sendMorningReminder_(tenant_(code), new Date());
+  const msg = `已對 ${code} 推播給 ${n} 人`;
+  console.log(msg);
+  try { SpreadsheetApp.getUi().alert(msg); } catch (e) { /* 非 UI 環境 */ }
+  return msg;
 }
 
 /** 是否為當月最後一天 */

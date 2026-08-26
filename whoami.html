@@ -31,8 +31,9 @@
 </head>
 <body>
 <div class="card">
-  <h1>你目前的對外 IP</h1>
-  <p class="sub">請確認這台裝置正連著<b>公司的 Wi-Fi</b>,<br>並且關閉行動網路、VPN 與 Proxy。</p>
+  <h1>對外 IP 查詢</h1>
+  <p class="sub">管理員工具 —— 用來查一個網路環境的對外 IP。<br>
+     請確認這台裝置正連著<b>要登記的那條 Wi-Fi</b>,並關閉行動網路、VPN 與 Proxy。</p>
 
   <div class="lb">IPv4</div>
   <div class="ip wait" id="v4">偵測中…</div>
@@ -41,9 +42,10 @@
   <button id="copy">複製</button>
 
   <div class="note">
-    把上面這組數字回報給管理員,填進打卡系統的「允許網段」之後,
-    這個網路環境底下的同仁才打得了卡。<br><br>
-    如果數字每天都不一樣,代表這條網路是浮動 IP,要跟 ISP 申請固定 IP。
+    把這組數字填進後台的「允許網段」,這個網路環境底下的同仁才打得了卡。<br><br>
+    <b>隔天再開一次確認。</b>數字變了代表這條網路是浮動 IP,
+    要跟 ISP 申請固定 IP,否則換 IP 那天全公司都打不了卡。<br><br>
+    這一頁不需要給員工 —— 他們在打卡頁看得到成功或失敗就夠了。
   </div>
 </div>
 
