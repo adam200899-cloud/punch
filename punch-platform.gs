@@ -831,12 +831,66 @@ function setupAdminBot() {
   return msg;
 }
 
+/**
+ * 把自己設成平台管理員 —— 不用啟用碼。
+ *
+ * 先對管理 bot 傳任何一句話,再執行這個函式。系統向 Telegram 要最近的訊息,
+ * 取出最後一個傳訊息的人,把他登記成平台管理員。
+ *
+ * 這是給「一個人管自己的系統」用的捷徑;要加其他管理員仍然走邀請碼。
+ */
+function makeMeAdmin() {
+  const token = PROP.getProperty('ADMIN_BOT_TOKEN');
+  if (!token) throw new Error('請先在指令碼屬性設定 ADMIN_BOT_TOKEN');
+
+  const me = tgGetMe_(token);
+  if (!me.ok) throw new Error(me.message);
+
+  // 設過 webhook 的 bot 不能用 getUpdates
+  const info = tgApi_(token, 'getWebhookInfo');
+  if (info.ok && info.result && info.result.url) {
+    throw new Error('這隻 bot 已經設了 webhook,無法用這個方式取得訊息。請改用邀請碼流程。');
+  }
+
+  const r = tgApi_(token, 'getUpdates', { limit: 20 });
+  if (!r.ok) throw new Error(r.message);
+
+  const senders = (r.result || [])
+    .map(u => u.message && u.message.from)
+    .filter(f => f && f.id && !f.is_bot);
+
+  if (!senders.length) {
+    throw new Error(
+      `還沒收到任何訊息。\n\n請先到 Telegram 找 @${me.username},隨便傳一句話(例如 hi),` +
+      '再回來執行一次這個函式。');
+  }
+
+  const from = senders[senders.length - 1];
+  const name = [from.first_name, from.last_name].filter(Boolean).join(' ') ||
+               (from.username ? '@' + from.username : '管理員');
+
+  addAdmin_(String(from.id), name, ROLE.PLATFORM, '');
+  logEvent_('INFO', 'makeMeAdmin', `${name} (${from.id})`);
+
+  try {
+    tgSend_(token, from.id,
+      `✅ 你已經是平台管理員了\n\n點輸入框旁邊的選單按鈕就能開啟後台,不需要輸入任何代碼。`);
+  } catch (e) { /* noop */ }
+
+  const msg = `已把「${name}」設為平台管理員。\n\n` +
+              `到 Telegram 開 @${me.username},點選單按鈕就能直接進後台,不用填啟用碼。`;
+  console.log(msg);
+  try { SpreadsheetApp.getUi().alert(msg); } catch (e) { /* 非 UI 環境 */ }
+  return msg;
+}
+
 function onOpen() {
   try {
     SpreadsheetApp.getUi()
       .createMenu('打卡平台')
       .addItem('① 初始化平台', 'setupPlatform')
       .addItem('② 設定後台 Telegram bot', 'setupAdminBot')
+      .addItem('②-2 把我設成管理員(免啟用碼)', 'makeMeAdmin')
       .addItem('③ 安裝月底排程', 'installTriggers')
       .addSeparator()
       .addItem('顯示平台資訊', 'showPlatformInfo')
