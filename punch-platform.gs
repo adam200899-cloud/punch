@@ -884,6 +884,53 @@ function makeMeAdmin() {
   return msg;
 }
 
+/** 診斷:管理 bot 到底看到什麼 */
+function diagAdminBot() {
+  const token = PROP.getProperty('ADMIN_BOT_TOKEN');
+  const lines = [];
+
+  if (!token) {
+    lines.push('❌ ADMIN_BOT_TOKEN 沒設定');
+  } else {
+    lines.push('token 長度:' + token.length + ',冒號位置:' + token.indexOf(':'));
+
+    const me = tgGetMe_(token);
+    lines.push(me.ok ? `✅ bot 是 @${me.username}(${me.name})` : '❌ getMe 失敗:' + me.message);
+
+    const hook = tgApi_(token, 'getWebhookInfo');
+    if (!hook.ok) {
+      lines.push('⚠️ getWebhookInfo 失敗:' + hook.message);
+    } else {
+      const url = hook.result.url || '';
+      lines.push(url ? '⚠️ 已設 webhook:' + url + '  ← getUpdates 會拿不到訊息'
+                     : '✅ 沒有設 webhook,getUpdates 可用');
+      if (hook.result.pending_update_count != null) {
+        lines.push('   待處理訊息數:' + hook.result.pending_update_count);
+      }
+    }
+
+    const up = tgApi_(token, 'getUpdates', { limit: 20 });
+    if (!up.ok) {
+      lines.push('❌ getUpdates 失敗:' + up.message);
+    } else {
+      const list = up.result || [];
+      lines.push('getUpdates 回傳 ' + list.length + ' 筆');
+      list.slice(-5).forEach(u => {
+        const m = u.message;
+        if (!m) { lines.push('   (非訊息類型的 update)'); return; }
+        const f = m.from || {};
+        lines.push(`   ${f.first_name || ''}${f.username ? ' @' + f.username : ''}` +
+                   ` (id ${f.id}) 說:${String(m.text || '(非文字)').slice(0, 20)}`);
+      });
+    }
+  }
+
+  const msg = lines.join('\n');
+  console.log(msg);
+  try { SpreadsheetApp.getUi().alert(msg); } catch (e) { /* noop */ }
+  return msg;
+}
+
 function onOpen() {
   try {
     SpreadsheetApp.getUi()
@@ -891,6 +938,7 @@ function onOpen() {
       .addItem('① 初始化平台', 'setupPlatform')
       .addItem('② 設定後台 Telegram bot', 'setupAdminBot')
       .addItem('②-2 把我設成管理員(免啟用碼)', 'makeMeAdmin')
+      .addItem('②-3 診斷管理 bot', 'diagAdminBot')
       .addItem('③ 安裝月底排程', 'installTriggers')
       .addSeparator()
       .addItem('顯示平台資訊', 'showPlatformInfo')
