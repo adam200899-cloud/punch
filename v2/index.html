@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>打卡</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  :root{ --bg:#17212b; --card:#1f2c39; --ink:#fff; --dim:#8fa5b8;
+         --ok:#3fbf6d; --bad:#e8555f; --line:#2b3b4c; }
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
+       background:var(--bg);color:var(--ink);
+       font:16px/1.6 -apple-system,"PingFang TC","Noto Sans TC",sans-serif;padding:20px}
+  .card{width:100%;max-width:340px;background:var(--card);border-radius:18px;
+        padding:28px 22px;text-align:center;border:1px solid var(--line)}
+  .icon{font-size:52px;line-height:1;margin-bottom:14px}
+  h1{font-size:21px;margin:0 0 6px;font-weight:700}
+  .sub{color:var(--dim);font-size:14px;margin:0;white-space:pre-line}
+  .time{font-size:40px;font-weight:800;letter-spacing:1px;margin:12px 0 2px;
+        font-variant-numeric:tabular-nums}
+  .judge{font-size:15px;color:var(--dim)}
+  .ok .time{color:var(--ok)} .bad h1{color:var(--bad)}
+  .net{margin-top:18px;padding-top:14px;border-top:1px solid var(--line);
+       color:var(--dim);font-size:12.5px;word-break:break-all}
+  .spin{width:34px;height:34px;margin:6px auto 14px;border:3px solid var(--line);
+        border-top-color:var(--dim);border-radius:50%;animation:r .8s linear infinite}
+  @keyframes r{to{transform:rotate(360deg)}}
+  button{margin-top:18px;width:100%;padding:13px;border:0;border-radius:11px;
+         background:#5288c1;color:#fff;font-size:16px;font-weight:600}
+</style>
+</head>
+<body>
+<div class="card" id="card">
+  <div class="spin"></div>
+  <h1 id="title">確認你的網路…</h1>
+  <p class="sub" id="sub">請稍等</p>
+  <div id="extra"></div>
+</div>
+
+<script src="config.js"></script>
+<script>
+const TG   = window.Telegram && window.Telegram.WebApp;
+const TYPE = new URLSearchParams(location.search).get('type') === 'out' ? 'out' : 'in';
+const GAS  = (window.PUNCH_CONFIG || {}).GAS_URL || '';
+const $ = id => document.getElementById(id);
+
+if (TG) { TG.ready(); TG.expand(); }
+
+function show(state, icon, title, sub, time, judge, net) {
+  $('card').className = 'card ' + (state || '');
+  $('card').innerHTML =
+    (icon ? `<div class="icon">${icon}</div>` : '') +
+    `<h1 id="title">${title}</h1>` +
+    (time  ? `<div class="time">${time}</div>` : '') +
+    (judge ? `<div class="judge">${judge}</div>` : '') +
+    (sub   ? `<p class="sub">${sub}</p>` : '') +
+    (net   ? `<div class="net">${net}</div>` : '') +
+    `<button onclick="close_()">關閉</button>`;
+}
+function close_(){ if (TG) TG.close(); else history.back(); }
+
+// ── 對外 IP:問三個來源,任何一個對得上就算數 ──
+const timeout = (p, ms) =>
+  Promise.race([p, new Promise((_, rj) => setTimeout(() => rj(new Error('timeout')), ms))]);
+
+async function grab(url, parse) {
+  const r = await timeout(fetch(url, { cache: 'no-store' }), 5000);
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return parse(await r.text());
+}
+async function myIps() {
+  const rs = await Promise.allSettled([
+    grab('https://api4.ipify.org?format=json', t => JSON.parse(t).ip),
+    grab('https://api64.ipify.org?format=json', t => JSON.parse(t).ip),
+    grab('https://www.cloudflare.com/cdn-cgi/trace', t => (t.match(/^ip=(.+)$/m) || [])[1]),
+  ]);
+  const s = new Set();
+  rs.forEach(r => { if (r.status === 'fulfilled' && r.value) s.add(String(r.value).trim()); });
+  return [...s];
+}
+
+async function run() {
+  if (!GAS) {
+    show('bad', '⚙️', '還沒設定', 'config.js 裡的 GAS_URL 是空的。');
+    return;
+  }
+  if (!TG || !TG.initData) {
+    show('bad', '📱', '請從 Telegram 開啟',
+         '這一頁要從 bot 的「上班 / 下班」按鈕點進來，\n直接開網址沒辦法確認你的身分。');
+    return;
+  }
+
+  let ips = [];
+  try { ips = await myIps(); } catch (e) { /* 交給後端判斷 */ }
+
+  let r;
+  try {
+    const res = await fetch(GAS, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },   // 避開 CORS preflight
+      body: JSON.stringify({ action: 'punch', type: TYPE, ips: ips, initData: TG.initData }),
+      redirect: 'follow',
+    });
+    r = await res.json();
+  } catch (e) {
+    show('bad', '📡', '連不上伺服器', '請確認網路，然後再試一次。');
+    return;
+  }
+
+  const net = ips.length ? '目前 IP　' + ips.join('　') : '抓不到對外 IP';
+  if (r.ok) {
+    if (TG.HapticFeedback) TG.HapticFeedback.notificationOccurred('success');
+    show('ok', TYPE === 'in' ? '🟢' : '🔴', r.title, '', r.message, r.detail || '', net);
+  } else {
+    if (TG.HapticFeedback) TG.HapticFeedback.notificationOccurred('error');
+    show('bad', '🚫', r.title || '打卡失敗', (r.message || '').replace(/\n/g, '<br>'), '', '', net);
+  }
+}
+run();
+</script>
+</body>
+</html>
