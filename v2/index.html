@@ -28,6 +28,8 @@
   @keyframes r{to{transform:rotate(360deg)}}
   button{margin-top:18px;width:100%;padding:13px;border:0;border-radius:11px;
          background:#5288c1;color:#fff;font-size:16px;font-weight:600}
+  button.big{padding:18px;font-size:20px;margin-top:12px}
+  button.in{background:#2e9e5b} button.out{background:#c94b53}
 </style>
 </head>
 <body>
@@ -41,7 +43,9 @@
 <script src="config.js"></script>
 <script>
 const TG   = window.Telegram && window.Telegram.WebApp;
-const TYPE = new URLSearchParams(location.search).get('type') === 'out' ? 'out' : 'in';
+// 網址帶 ?type=in / ?type=out 就直接打;沒帶(左下角「打卡」選單按鈕)先讓人選
+const PARAM = new URLSearchParams(location.search).get('type');
+let TYPE = PARAM === 'out' ? 'out' : PARAM === 'in' ? 'in' : '';
 const GAS  = (window.PUNCH_CONFIG || {}).GAS_URL || '';
 const $ = id => document.getElementById(id);
 
@@ -80,7 +84,22 @@ async function myIps() {
   return [...s];
 }
 
+function choose() {
+  $('card').className = 'card';
+  $('card').innerHTML =
+    `<h1>現在要打哪一種？</h1>` +
+    `<button class="big in"  onclick="pick('in')">🟢　上班</button>` +
+    `<button class="big out" onclick="pick('out')">🔴　下班</button>` +
+    `<p class="sub" style="margin-top:14px">要先連上店裡的 Wi-Fi</p>`;
+}
+function pick(t) {
+  TYPE = t;
+  $('card').innerHTML = `<div class="spin"></div><h1>確認你的網路…</h1><p class="sub">請稍等</p>`;
+  run();
+}
+
 async function run() {
+  if (!TYPE) { choose(); return; }
   if (!GAS) {
     show('bad', '⚙️', '還沒設定', 'config.js 裡的 GAS_URL 是空的。');
     return;
