@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>寫案例</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  :root{ --bg:#17212b; --card:#1f2c39; --ink:#fff; --dim:#8fa5b8; --ok:#3fbf6d; --bad:#e8555f;
+         --line:#2b3b4c; --field:#0e1621; --accent:#5288c1; }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:16px/1.5 -apple-system,"PingFang TC","Noto Sans TC",sans-serif;padding:16px 16px 40px}
+  h1{font-size:20px;margin:4px 0 2px}
+  .hint{color:var(--dim);font-size:13.5px;margin:0 0 16px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:14px}
+  .card h2{font-size:14px;color:var(--dim);margin:0 0 10px;font-weight:600;letter-spacing:.5px}
+  label{display:block;font-size:14px;margin:12px 0 5px}
+  label:first-of-type{margin-top:0}
+  label b{color:var(--bad);font-weight:400;margin-left:3px}
+  input[type=text],input[type=number],textarea,select{
+    width:100%;background:var(--field);color:var(--ink);border:1px solid var(--line);border-radius:10px;
+    padding:11px 12px;font-size:16px;font-family:inherit}
+  textarea{min-height:76px;resize:vertical}
+  select{appearance:none;-webkit-appearance:none;
+    background-image:linear-gradient(45deg,transparent 50%,var(--dim) 50%),linear-gradient(135deg,var(--dim) 50%,transparent 50%);
+    background-position:calc(100% - 18px) 50%,calc(100% - 13px) 50%;background-size:5px 5px;background-repeat:no-repeat}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .chips{display:flex;flex-wrap:wrap;gap:8px}
+  .chips input{display:none}
+  .chips span{display:inline-block;padding:9px 14px;border:1px solid var(--line);border-radius:999px;font-size:15px;background:var(--field)}
+  .chips input:checked+span{background:var(--accent);border-color:var(--accent)}
+  .photo{display:flex;align-items:center;gap:12px}
+  .photo img{width:64px;height:64px;object-fit:cover;border-radius:10px;border:1px solid var(--line);display:none}
+  .photo .btn{flex:1;text-align:center;padding:11px;border:1px dashed var(--dim);border-radius:10px;color:var(--dim);font-size:15px}
+  .photo input{display:none}
+  .small{font-size:12.5px;color:var(--dim);margin-top:6px}
+  button.submit{width:100%;padding:15px;border:0;border-radius:12px;background:var(--accent);color:#fff;font-size:17px;font-weight:700;margin-top:6px}
+  button.submit:disabled{opacity:.5}
+  .err{color:var(--bad);font-size:14px;margin:8px 0 0;display:none}
+  .result{text-align:center;padding:30px 10px}
+  .result .icon{font-size:52px}
+  .result h1{font-size:21px}
+  .result p{color:var(--dim);white-space:pre-line}
+  .result button{margin-top:18px;width:100%;padding:13px;border:0;border-radius:11px;background:var(--accent);color:#fff;font-size:16px;font-weight:600}
+  .spin{width:34px;height:34px;margin:6px auto 14px;border:3px solid var(--line);border-top-color:var(--dim);border-radius:50%;animation:r .8s linear infinite}
+  @keyframes r{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div id="app">
+<h1>寫一篇案例</h1>
+<p class="hint">填客人的真實情況，姓名、車牌不用給，文章會用化名。</p>
+
+<form id="f" autocomplete="off">
+<div class="card">
+  <h2>案件</h2>
+  <label>案件類型<b>*</b></label>
+  <div class="chips" id="types"></div>
+  <label>客人區域<b>*</b></label>
+  <select name="area" required>
+    <option value="">請選</option>
+    <option>南屯區</option><option>西屯區</option><option>北屯區</option><option>西區</option><option>北區</option>
+    <option>中區</option><option>東區</option><option>南區</option><option>大里區</option><option>太平區</option>
+    <option>烏日區</option><option>霧峰區</option><option>大雅區</option><option>豐原區</option><option>沙鹿區</option>
+    <option>彰化</option><option>其他</option>
+  </select>
+  <label>車型／物品</label>
+  <input type="text" name="item" placeholder="例：2019 Altis、Gogoro 2、勞力士 Submariner">
+</div>
+
+<div class="card">
+  <h2>客人</h2>
+  <label>客人職業<b>*</b></label>
+  <input type="text" name="job" required placeholder="例：外送員、雞排攤老闆、櫃姐">
+  <label>為什麼需要錢<b>*</b></label>
+  <textarea name="why" required placeholder="例：媽媽住院要付醫藥費、店裡要進貨、卡費繳不出來"></textarea>
+  <label>之前在哪碰壁</label>
+  <input type="text" name="blocked" placeholder="例：銀行拒貸、車貸有遲繳、無薪轉沒勞保">
+  <label>一開始最擔心什麼</label>
+  <input type="text" name="worry" placeholder="例：怕車被扣住、怕利息很高、怕留信用紀錄">
+</div>
+
+<div class="card">
+  <h2>我們怎麼處理</h2>
+  <label>怎麼評估、怎麼幫他<b>*</b></label>
+  <textarea name="how" required placeholder="例：看車況跟殘值，還在貸款但已繳 20 期，用增貸方式辦，結清舊貸再多拿現金"></textarea>
+  <div class="row">
+    <div><label>核貸金額（萬）<b>*</b></label><input type="number" name="amount" required inputmode="decimal" min="0.1" step="0.1" placeholder="20"></div>
+    <div><label>多久撥款<b>*</b></label>
+      <select name="speed" required><option value="">請選</option><option>當天</option><option>隔天</option><option>2–3 天</option><option>一週內</option></select></div>
+  </div>
+  <label>免留車？<b>*</b></label>
+  <div class="chips">
+    <label><input type="radio" name="keep" value="免留車" required><span>免留車</span></label>
+    <label><input type="radio" name="keep" value="留車"><span>留車</span></label>
+    <label><input type="radio" name="keep" value="不適用"><span>不適用（非車）</span></label>
+  </div>
+  <label>還款方式</label>
+  <select name="repay"><option value="">（略過）</option><option>按月繳息</option><option>本利攤還</option><option>一次還清</option></select>
+</div>
+
+<div class="card">
+  <h2>照片（可略過）</h2>
+  <div class="photo">
+    <img id="pv" alt="">
+    <label class="btn" for="photo">拍照或選圖</label>
+    <input type="file" id="photo" accept="image/*">
+  </div>
+  <p class="small">不要拍到客人的臉、車牌、證件。拍車的局部或物品就好。</p>
+  <label>補充</label>
+  <textarea name="note" placeholder="其他想讓文章提到的"></textarea>
+</div>
+
+<p class="err" id="err"></p>
+<button class="submit" type="submit" id="go">送出，幫我寫成文章</button>
+</form>
+</div>
+
+<script src="config.js"></script>
+<script>
+const TG  = window.Telegram && window.Telegram.WebApp;
+const GAS = (window.PUNCH_CONFIG || {}).GAS_URL || '';
+const $ = id => document.getElementById(id);
+if (TG) { TG.ready(); TG.expand(); }
+
+// 類型按鈕(跟後端 CASE_TYPES 同一份名單)
+const TYPES = ['汽車','機車','房屋二胎','黃金','手錶','手機','筆電','精品'];
+$('types').innerHTML = TYPES.map((t, i) =>
+  `<label><input type="radio" name="type" value="${t}" ${i === 0 ? 'checked' : ''}><span>${t}</span></label>`).join('');
+
+// 照片:縮到 1600px、JPEG 0.85,再轉 base64
+let photo = null;
+$('photo').addEventListener('change', async e => {
+  const file = e.target.files[0]; if (!file) return;
+  const img = new Image(); img.src = URL.createObjectURL(file);
+  await new Promise(r => img.onload = r);
+  const k = Math.min(1, 1600 / Math.max(img.width, img.height));
+  const c = document.createElement('canvas'); c.width = img.width * k; c.height = img.height * k;
+  c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+  const dataUrl = c.toDataURL('image/jpeg', 0.85);
+  photo = { type: 'image/jpeg', b64: dataUrl.split(',')[1] };
+  $('pv').src = dataUrl; $('pv').style.display = 'block';
+});
+
+function fail(msg) { const e = $('err'); e.textContent = msg; e.style.display = 'block'; }
+
+$('f').addEventListener('submit', async ev => {
+  ev.preventDefault(); $('err').style.display = 'none';
+  if (!TG || !TG.initData) { fail('請從 Telegram 的「寫案例」按鈕打開這一頁。'); return; }
+  if (!GAS) { fail('config.js 的 GAS_URL 是空的。'); return; }
+
+  const fd = new FormData(ev.target);
+  const data = {};
+  fd.forEach((v, k) => { if (k !== 'photo') data[k] = String(v).trim(); });
+
+  const btn = $('go'); btn.disabled = true; btn.textContent = '產生中，大概半分鐘…';
+  let r;
+  try {
+    const res = await fetch(GAS, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: 'case', initData: TG.initData, data, photo }),
+      redirect: 'follow',
+    });
+    r = await res.json();
+  } catch (e) {
+    btn.disabled = false; btn.textContent = '送出，幫我寫成文章';
+    fail('連不上伺服器，請確認網路後再送一次。'); return;
+  }
+  if (!r.ok) {
+    btn.disabled = false; btn.textContent = '送出，幫我寫成文章';
+    fail(r.message || '失敗了，再試一次。'); return;
+  }
+  if (TG.HapticFeedback) TG.HapticFeedback.notificationOccurred('success');
+  $('app').innerHTML =
+    `<div class="result"><div class="icon">✅</div><h1>寫好了</h1>` +
+    `<p><b>${esc(r.title)}</b>\n\n${esc(r.excerpt)}\n\n已存成草稿，老闆看過就會發布。</p>` +
+    `<button onclick="TG.close()">關閉</button></div>`;
+});
+function esc(s){ return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+</script>
+</body>
+</html>
