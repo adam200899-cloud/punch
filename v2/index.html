@@ -30,6 +30,15 @@
          background:#5288c1;color:#fff;font-size:16px;font-weight:600}
   button.big{padding:18px;font-size:20px;margin-top:12px}
   button.in{background:#2e9e5b} button.out{background:#c94b53}
+  button.ghost{background:transparent;border:1px solid var(--line);color:var(--dim)}
+  button.alt{background:#2b3b4c}
+  .warn h1{color:#f0b429}
+  .reasons{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px}
+  .reasons button{margin:0;padding:14px 8px;background:#2b3b4c;font-size:17px}
+  .reasons button.on{background:#5288c1}
+  textarea{width:100%;margin-top:12px;padding:10px 12px;border-radius:10px;border:1px solid var(--line);
+           background:#17212b;color:var(--ink);font:inherit;font-size:15px;line-height:1.5;resize:none}
+  .err{color:var(--bad);font-size:13px;margin-top:8px;min-height:18px}
 </style>
 </head>
 <body>
@@ -110,15 +119,28 @@ async function run() {
     return;
   }
 
-  let ips = [];
-  try { ips = await myIps(); } catch (e) { /* 交給後端判斷 */ }
+  try { IPS = await myIps(); } catch (e) { /* 交給後端判斷 */ }
+  send({});
+}
 
+let IPS = [];
+let OPT = {};   // confirm / reason,重送時累加
+const LABEL = { in: '上班', out: '下班' };
+
+function busy() {
+  $('card').className = 'card';
+  $('card').innerHTML = `<div class="spin"></div><h1>打卡中…</h1><p class="sub">請稍等</p>`;
+}
+
+async function send(extra) {
+  OPT = Object.assign({}, OPT, extra);
+  busy();
   let r;
   try {
     const res = await fetch(GAS, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },   // 避開 CORS preflight
-      body: JSON.stringify({ action: 'punch', type: TYPE, ips: ips, initData: TG.initData }),
+      body: JSON.stringify(Object.assign({ action: 'punch', type: TYPE, ips: IPS, initData: TG.initData }, OPT)),
       redirect: 'follow',
     });
     r = await res.json();
@@ -127,14 +149,58 @@ async function run() {
     return;
   }
 
-  const net = ips.length ? '目前 IP　' + ips.join('　') : '抓不到對外 IP';
+  const net = IPS.length ? '目前 IP　' + IPS.join('　') : '抓不到對外 IP';
+  if (r.confirm) { askConfirm(r); return; }
+  if (r.needReason) { askReason(r); return; }
   if (r.ok) {
     if (TG.HapticFeedback) TG.HapticFeedback.notificationOccurred('success');
-    show('ok', TYPE === 'in' ? '🟢' : '🔴', r.title, '', r.message, r.detail || '', net);
+    show('ok', TYPE === 'in' ? '🟢' : '🔴', r.title, '按錯的話，bot 訊息下面可以撤回（5 分鐘內）', r.message, r.detail || '', net);
   } else {
     if (TG.HapticFeedback) TG.HapticFeedback.notificationOccurred('error');
     show('bad', '🚫', r.title || '打卡失敗', (r.message || '').replace(/\n/g, '<br>'), '', '', net);
   }
+}
+
+// 看起來按錯:讓員工選「改打另一種 / 確定 / 取消」
+function askConfirm(r) {
+  if (TG.HapticFeedback) TG.HapticFeedback.notificationOccurred('warning');
+  const sug = r.suggest && r.suggest !== TYPE ? r.suggest : '';
+  $('card').className = 'card warn';
+  $('card').innerHTML =
+    `<div class="icon">🤔</div><h1>${r.title}</h1>` +
+    `<p class="sub">${(r.message || '').replace(/\n/g, '<br>')}</p>` +
+    (sug ? `<button class="big ${sug}" onclick="switchTo('${sug}')">改打${LABEL[sug]}卡</button>` : '') +
+    `<button class="${sug ? 'alt' : 'big ' + TYPE}" onclick="send({confirm:true})">確定要打${LABEL[TYPE]}卡</button>` +
+    `<button class="ghost" onclick="close_()">取消，不打卡</button>`;
+}
+function switchTo(t) { TYPE = t; send({ confirm: true }); }
+
+// 提早下班:選原因
+let PICK = '';
+function askReason(r) {
+  PICK = '';
+  $('card').className = 'card warn';
+  $('card').innerHTML =
+    `<div class="icon">🏃</div><h1>${r.title}</h1>` +
+    `<p class="sub">${(r.message || '').replace(/\n/g, '<br>')}</p>` +
+    `<div class="reasons">` +
+      ['事假', '病假', '公出', '其他'].map(k => `<button onclick="pickReason(this,'${k}')">${k}</button>`).join('') +
+    `</div>` +
+    `<textarea id="note" rows="2" maxlength="60" placeholder="補充說明（選「其他」要寫）"></textarea>` +
+    `<div class="err" id="err"></div>` +
+    `<button class="big out" onclick="sendReason()">送出，打下班卡</button>` +
+    `<button class="ghost" onclick="close_()">取消，不打卡</button>`;
+}
+function pickReason(el, k) {
+  PICK = k;
+  document.querySelectorAll('.reasons button').forEach(b => b.classList.toggle('on', b === el));
+  $('err').textContent = '';
+}
+function sendReason() {
+  const note = $('note').value.trim();
+  if (!PICK) { $('err').textContent = '請先選一個原因'; return; }
+  if (PICK === '其他' && !note) { $('err').textContent = '選「其他」要寫一下原因'; return; }
+  send({ confirm: true, reason: { kind: PICK, note: note } });
 }
 run();
 </script>
