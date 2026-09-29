@@ -183,12 +183,24 @@ function fail(msg) { const e = $('err'); e.textContent = msg; e.style.display = 
 
 $('f').addEventListener('submit', async ev => {
   ev.preventDefault(); $('err').style.display = 'none';
-  if (!TG || !TG.initData) { fail('請從 Telegram 的「寫案例」按鈕打開這一頁。'); return; }
-  if (!GAS) { fail('config.js 的 GAS_URL 是空的。'); return; }
+  if (!TG || !TG.platform || TG.platform === 'unknown') { fail('請從 Telegram 的「寫案例」按鈕打開這一頁。'); return; }
 
   const fd = new FormData(ev.target);
   const data = {};
-  fd.forEach((v, k) => { if (k !== 'photo') data[k] = String(v).trim(); });
+  fd.forEach((v, k) => { if (k !== 'photo' && String(v).trim()) data[k] = String(v).trim(); });
+
+  // 有些 Telegram 版本從下方按鈕開啟時不給 initData,改用 sendData 交給 bot(身分由 Telegram 保證)
+  if (!TG.initData) {
+    for (const k of ['job', 'why', 'how', 'amount', 'speed', 'area']) {
+      if (!data[k]) { fail('有 * 的欄位要填完。'); return; }
+    }
+    const payload = JSON.stringify({ action: 'case', data });
+    if (new TextEncoder().encode(payload).length > 4000) { fail('內容太長了，請把文字精簡一點再送。'); return; }
+    if (photo) alert('照片等一下請直接傳到 bot 的對話裡，會自動轉給老闆。');
+    TG.sendData(payload);   // 送出後 Telegram 會自動關閉這一頁,結果由 bot 回覆
+    return;
+  }
+  if (!GAS) { fail('config.js 的 GAS_URL 是空的。'); return; }
 
   const btn = $('go'); btn.disabled = true; btn.textContent = '送出中…';
   let r;
