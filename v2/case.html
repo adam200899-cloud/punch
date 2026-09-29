@@ -27,6 +27,7 @@
     background-position:calc(100% - 18px) 50%,calc(100% - 13px) 50%;background-size:5px 5px;background-repeat:no-repeat}
   .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
   .chips{display:flex;flex-wrap:wrap;gap:8px}
+  .chips label{display:inline-block;margin:0}
   .chips input{display:none}
   .chips span{display:inline-block;padding:9px 14px;border:1px solid var(--line);border-radius:999px;font-size:15px;background:var(--field)}
   .chips input:checked+span{background:var(--accent);border-color:var(--accent)}
@@ -50,7 +51,7 @@
 <body>
 <div id="app">
 <h1>寫一篇案例</h1>
-<p class="hint">填客人的真實情況，姓名、車牌不用給，文章會用化名。</p>
+<p class="hint">填客人的真實情況，<b>不要填姓名、車牌、電話</b>，文章會用化名。<br>有 <b style="color:#e8555f">*</b> 的一定要填，其他越完整、數字越具體，文章越好。</p>
 
 <form id="f" autocomplete="off">
 <div class="card">
@@ -66,13 +67,20 @@
     <option>彰化</option><option>其他</option>
   </select>
   <label>車型／物品</label>
-  <input type="text" name="item" placeholder="例：2019 Altis、Gogoro 2、勞力士 Submariner">
+  <input type="text" name="item" placeholder="例：Toyota Altis、Gogoro 2、勞力士 Submariner">
+  <div class="row">
+    <div><label>年份</label><input type="text" name="year" inputmode="numeric" placeholder="例：2019"></div>
+    <div><label>里程／狀況</label><input type="text" name="cond" placeholder="例：4 萬公里、車況好"></div>
+  </div>
 </div>
 
 <div class="card">
   <h2>客人</h2>
-  <label>客人職業<b>*</b></label>
-  <input type="text" name="job" required placeholder="例：外送員、雞排攤老闆、櫃姐">
+  <div class="row">
+    <div><label>年齡</label>
+      <select name="age"><option value="">（略過）</option><option>20 歲以下</option><option>20 多歲</option><option>30 多歲</option><option>40 多歲</option><option>50 多歲</option><option>60 歲以上</option></select></div>
+    <div><label>客人職業<b>*</b></label><input type="text" name="job" required placeholder="例：外送員、櫃姐"></div>
+  </div>
   <label>為什麼需要錢<b>*</b></label>
   <textarea name="why" required placeholder="例：媽媽住院要付醫藥費、店裡要進貨、卡費繳不出來"></textarea>
   <label>之前在哪碰壁</label>
@@ -83,12 +91,22 @@
 
 <div class="card">
   <h2>我們怎麼處理</h2>
+  <label>貸款／動保狀況</label>
+  <div class="chips">
+    <label><input type="radio" name="loan" value="無貸款"><span>無貸款</span></label>
+    <label><input type="radio" name="loan" value="還在分期"><span>還在分期</span></label>
+    <label><input type="radio" name="loan" value="有動保設定"><span>有動保設定</span></label>
+    <label><input type="radio" name="loan" value="不適用"><span>不適用</span></label>
+  </div>
+  <input type="text" name="loanNote" placeholder="例：已繳 20 期、還剩 8 萬沒繳" style="margin-top:8px">
+  <label>市價／估價（萬）</label>
+  <input type="number" name="market" inputmode="decimal" min="0" step="0.1" placeholder="例：45">
   <label>怎麼評估、怎麼幫他<b>*</b></label>
   <textarea name="how" required placeholder="例：看車況跟殘值，還在貸款但已繳 20 期，用增貸方式辦，結清舊貸再多拿現金"></textarea>
   <div class="row">
     <div><label>核貸金額（萬）<b>*</b></label><input type="number" name="amount" required inputmode="decimal" min="0.1" step="0.1" placeholder="20"></div>
-    <div><label>多久撥款<b>*</b></label>
-      <select name="speed" required><option value="">請選</option><option>當天</option><option>隔天</option><option>2–3 天</option><option>一週內</option></select></div>
+    <div><label>進門到撥款<b>*</b></label>
+      <select name="speed" required><option value="">請選</option><option>30 分鐘內</option><option>1 小時內</option><option>2 小時內</option><option>當天</option><option>隔天</option><option>2–3 天</option><option>一週內</option></select></div>
   </div>
   <label>免留車？<b>*</b></label>
   <div class="chips">
@@ -96,8 +114,26 @@
     <label><input type="radio" name="keep" value="留車"><span>留車</span></label>
     <label><input type="radio" name="keep" value="不適用"><span>不適用（非車）</span></label>
   </div>
-  <label>還款方式</label>
-  <select name="repay"><option value="">（略過）</option><option>按月繳息</option><option>本利攤還</option><option>一次還清</option></select>
+  <div class="row">
+    <div><label>月息</label>
+      <select name="rate"><option value="">（略過）</option><option>1%</option><option>1.5%</option><option>2%</option><option>2.5%</option></select></div>
+    <div><label>期數</label>
+      <select name="term"><option value="">（略過）</option><option>3 期</option><option>6 期</option><option>12 期</option><option>24 期</option><option>36 期</option><option>48 期</option><option>60 期</option></select></div>
+  </div>
+  <div class="row">
+    <div><label>月付（元）</label><input type="number" name="monthly" inputmode="numeric" min="0" placeholder="例：4500"></div>
+    <div><label>還款方式</label>
+      <select name="repay"><option value="">（略過）</option><option>按月繳息</option><option>本利攤還</option><option>一次還清</option></select></div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>客人回饋（可略過）</h2>
+  <label>客人說的一句話</label>
+  <input type="text" name="quote" placeholder="例：沒想到半小時就辦好，車還能騎回家">
+  <div class="chips" style="margin-top:10px">
+    <label><input type="checkbox" name="consent" value="同意"><span>客人同意引用這句話（不會寫名字）</span></label>
+  </div>
 </div>
 
 <div class="card">
@@ -113,7 +149,7 @@
 </div>
 
 <p class="err" id="err"></p>
-<button class="submit" type="submit" id="go">送出，幫我寫成文章</button>
+<button class="submit" type="submit" id="go">送出案例</button>
 </form>
 </div>
 
@@ -154,7 +190,7 @@ $('f').addEventListener('submit', async ev => {
   const data = {};
   fd.forEach((v, k) => { if (k !== 'photo') data[k] = String(v).trim(); });
 
-  const btn = $('go'); btn.disabled = true; btn.textContent = '產生中，大概半分鐘…';
+  const btn = $('go'); btn.disabled = true; btn.textContent = '送出中…';
   let r;
   try {
     const res = await fetch(GAS, {
@@ -165,18 +201,20 @@ $('f').addEventListener('submit', async ev => {
     });
     r = await res.json();
   } catch (e) {
-    btn.disabled = false; btn.textContent = '送出，幫我寫成文章';
+    btn.disabled = false; btn.textContent = '送出案例';
     fail('連不上伺服器，請確認網路後再送一次。'); return;
   }
   if (!r.ok) {
-    btn.disabled = false; btn.textContent = '送出，幫我寫成文章';
+    btn.disabled = false; btn.textContent = '送出案例';
     fail(r.message || '失敗了，再試一次。'); return;
   }
   if (TG.HapticFeedback) TG.HapticFeedback.notificationOccurred('success');
-  $('app').innerHTML =
-    `<div class="result"><div class="icon">✅</div><h1>寫好了</h1>` +
-    `<p><b>${esc(r.title)}</b>\n\n${esc(r.excerpt)}\n\n已存成草稿，老闆看過就會發布。</p>` +
-    `<button onclick="TG.close()">關閉</button></div>`;
+  $('app').innerHTML = r.mode === 'draft'
+    ? `<div class="result"><div class="icon">✅</div><h1>寫好了</h1>` +
+      `<p><b>${esc(r.title)}</b>\n\n${esc(r.excerpt)}\n\n案例編號 ${esc(r.id)}\n已存成草稿，老闆看過就會發布。</p>` +
+      `<button onclick="TG.close()">關閉</button></div>`
+    : `<div class="result"><div class="icon">✅</div><h1>${esc(r.title)}</h1>` +
+      `<p>${esc(r.excerpt)}</p><button onclick="TG.close()">關閉</button></div>`;
 });
 function esc(s){ return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
 </script>
